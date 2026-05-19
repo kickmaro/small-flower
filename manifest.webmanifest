@@ -1,7 +1,7 @@
 {
   "name": "洪小花打卡系統",
   "short_name": "洪小花打卡",
-  "description": "打卡、請假、薪資統計與打卡紀錄匯出。",
+  "description": "打卡、請假、定位檢查與打卡紀錄匯出。",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

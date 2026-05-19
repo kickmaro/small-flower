@@ -9,16 +9,16 @@
     <meta name="apple-mobile-web-app-title" content="洪小花打卡系統" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>洪小花打卡系統</title>
-    <link rel="manifest" href="manifest.webmanifest?v=7" />
+    <link rel="manifest" href="manifest.webmanifest?v=8" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=7" />
+    <link rel="stylesheet" href="styles.css?v=8" />
   </head>
   <body>
     <section class="login-screen" aria-label="登入">
       <form class="login-card" id="loginForm">
         <h1>洪小花打卡系統</h1>
-        <p class="login-subtitle">打卡、請假、薪資與 HR 後台</p>
+        <p class="login-subtitle">打卡、請假與 HR 後台</p>
         <label>
           工號
           <input id="employeeId" type="text" autocomplete="username" required />
@@ -45,7 +45,6 @@
         <nav class="nav-tabs" aria-label="功能切換">
           <button class="nav-tab is-active" type="button" data-tab="clock">打卡</button>
           <button class="nav-tab" type="button" data-tab="records">紀錄</button>
-          <button class="nav-tab" type="button" data-tab="salary">薪資</button>
           <button class="nav-tab" type="button" data-tab="leave">請假</button>
           <button class="nav-tab hr-only" type="button" data-tab="hr">HR</button>
         </nav>
@@ -55,21 +54,6 @@
           <small id="currentRole">-</small>
           <button class="secondary-button" id="logoutBtn" type="button">登出</button>
           <button class="secondary-button install-button" id="installBtn" type="button" hidden>安裝 App</button>
-        </div>
-        <div class="settings-panel">
-          <h2>薪資設定</h2>
-          <label>
-            時薪
-            <input id="hourlyRate" type="number" min="0" step="1" />
-          </label>
-          <label>
-            加班倍率
-            <input id="overtimeMultiplier" type="number" min="1" step="0.1" />
-          </label>
-          <label>
-            正常工時
-            <input id="standardHours" type="number" min="1" max="24" step="0.5" />
-          </label>
         </div>
       </aside>
 
@@ -101,45 +85,6 @@
               <p class="location-status" id="locationStatus" aria-live="polite">打卡會檢查定位範圍</p>
             </section>
 
-            <section class="entry-panel">
-              <h2>新增紀錄</h2>
-              <form id="recordForm">
-                <div class="form-grid">
-                  <label>
-                    日期
-                    <input id="recordDate" type="date" required />
-                  </label>
-                  <label>
-                    類型
-                    <select id="recordType">
-                      <option value="work">上班</option>
-                      <option value="annual">特休</option>
-                      <option value="sick">病假</option>
-                      <option value="personal">事假</option>
-                      <option value="official">公假</option>
-                      <option value="unpaid">無薪假</option>
-                    </select>
-                  </label>
-                  <label class="time-field">
-                    上班時間
-                    <input id="startTime" type="time" />
-                  </label>
-                  <label class="time-field">
-                    下班時間
-                    <input id="endTime" type="time" />
-                  </label>
-                  <label>
-                    休息分鐘
-                    <input id="breakMinutes" type="number" min="0" step="5" />
-                  </label>
-                  <label>
-                    備註
-                    <input id="note" type="text" maxlength="80" />
-                  </label>
-                </div>
-                <button class="primary-button form-submit" type="submit">儲存紀錄</button>
-              </form>
-            </section>
           </div>
         </section>
 
@@ -162,10 +107,7 @@
                   <th>類型</th>
                   <th>上班</th>
                   <th>下班</th>
-                  <th>休息</th>
                   <th>工時</th>
-                  <th>加班</th>
-                  <th>薪資</th>
                   <th>定位</th>
                   <th>請假天數</th>
                   <th>備註</th>
@@ -176,40 +118,6 @@
             </table>
           </div>
           <p class="empty-state" id="emptyRecords">本月尚無紀錄</p>
-        </section>
-
-        <section class="view" id="salaryView" data-view="salary">
-          <div class="section-header">
-            <div>
-              <span class="eyebrow">Payroll</span>
-              <h2>薪資統計</h2>
-            </div>
-          </div>
-          <div class="metric-grid">
-            <article class="metric">
-              <span>總工時</span>
-              <strong id="totalHours">0</strong>
-            </article>
-            <article class="metric">
-              <span>加班時數</span>
-              <strong id="overtimeHours">0</strong>
-            </article>
-            <article class="metric">
-              <span>出勤天數</span>
-              <strong id="workDays">0</strong>
-            </article>
-            <article class="metric">
-              <span>預估薪資</span>
-              <strong id="totalPay">$0</strong>
-            </article>
-          </div>
-          <div class="bar-panel">
-            <div class="section-header compact">
-              <h2>每日工時</h2>
-              <span id="salaryRange"></span>
-            </div>
-            <div class="bar-chart" id="hoursChart"></div>
-          </div>
         </section>
 
         <section class="view" id="leaveView" data-view="leave">
@@ -398,14 +306,6 @@
       </main>
     </div>
 
-    <template id="barTemplate">
-      <div class="bar-item">
-        <div class="bar-label"></div>
-        <div class="bar-track"><span></span></div>
-        <div class="bar-value"></div>
-      </div>
-    </template>
-
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
   </body>
 </html>

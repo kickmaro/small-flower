@@ -1,5 +1,4 @@
 const STORAGE_KEY = "clock-payroll-records-v1";
-const SETTINGS_KEY = "clock-payroll-settings-v1";
 const AUTH_KEY = "clock-payroll-current-employee-v1";
 const WORKSITE_KEY = "clock-payroll-worksite-v1";
 
@@ -23,16 +22,9 @@ const leaveLabels = {
 
 const leaveTypes = ["annual", "sick", "personal", "official", "unpaid"];
 
-const defaultSettings = {
-  hourlyRate: 190,
-  overtimeMultiplier: 1.34,
-  standardHours: 8,
-};
-
 let currentEmployeeId = sessionStorage.getItem(AUTH_KEY) || "";
 let currentAccount = null;
 let records = [];
-let settings = loadSettings();
 let worksite = loadWorksite();
 let selectedMonth = monthKey(new Date());
 
@@ -54,9 +46,6 @@ const els = {
   monthPicker: document.querySelector("#monthPicker"),
   prevMonth: document.querySelector("#prevMonth"),
   nextMonth: document.querySelector("#nextMonth"),
-  hourlyRate: document.querySelector("#hourlyRate"),
-  overtimeMultiplier: document.querySelector("#overtimeMultiplier"),
-  standardHours: document.querySelector("#standardHours"),
   worksiteForm: document.querySelector("#worksiteForm"),
   worksiteLat: document.querySelector("#worksiteLat"),
   worksiteLng: document.querySelector("#worksiteLng"),
@@ -66,13 +55,6 @@ const els = {
   useCurrentLocationBtn: document.querySelector("#useCurrentLocationBtn"),
   clockInBtn: document.querySelector("#clockInBtn"),
   clockOutBtn: document.querySelector("#clockOutBtn"),
-  recordForm: document.querySelector("#recordForm"),
-  recordDate: document.querySelector("#recordDate"),
-  recordType: document.querySelector("#recordType"),
-  startTime: document.querySelector("#startTime"),
-  endTime: document.querySelector("#endTime"),
-  breakMinutes: document.querySelector("#breakMinutes"),
-  note: document.querySelector("#note"),
   leaveForm: document.querySelector("#leaveForm"),
   leaveType: document.querySelector("#leaveType"),
   leaveDuration: document.querySelector("#leaveDuration"),
@@ -83,12 +65,6 @@ const els = {
   emptyRecords: document.querySelector("#emptyRecords"),
   exportCsvBtn: document.querySelector("#exportCsvBtn"),
   printBtn: document.querySelector("#printBtn"),
-  totalHours: document.querySelector("#totalHours"),
-  overtimeHours: document.querySelector("#overtimeHours"),
-  workDays: document.querySelector("#workDays"),
-  totalPay: document.querySelector("#totalPay"),
-  salaryRange: document.querySelector("#salaryRange"),
-  hoursChart: document.querySelector("#hoursChart"),
   leaveRange: document.querySelector("#leaveRange"),
   leaveStats: document.querySelector("#leaveStats"),
   leaveTable: document.querySelector("#leaveTable"),
@@ -101,22 +77,17 @@ const els = {
   hrRecordCount: document.querySelector("#hrRecordCount"),
   hrLeaveCount: document.querySelector("#hrLeaveCount"),
   hrHourCount: document.querySelector("#hrHourCount"),
-  barTemplate: document.querySelector("#barTemplate"),
 };
 
 init();
 
 function init() {
   registerServiceWorker();
-  hydrateSettings();
   hydrateWorksite();
   bindEvents();
   setInterval(tickClock, 1000);
-  els.recordDate.value = todayKey();
   els.leaveStartDate.value = todayKey();
   els.leaveEndDate.value = todayKey();
-  els.breakMinutes.value = "60";
-  syncTimeFields();
   if (currentEmployeeId) {
     loginEmployee(currentEmployeeId);
   } else {
@@ -140,33 +111,19 @@ function bindEvents() {
   els.nextMonth.addEventListener("click", () => shiftMonth(1));
   els.clockInBtn.addEventListener("click", () => stampTime("in"));
   els.clockOutBtn.addEventListener("click", () => stampTime("out"));
-  els.recordForm.addEventListener("submit", saveManualRecord);
   els.leaveForm.addEventListener("submit", saveLeaveRequest);
-  els.recordType.addEventListener("change", syncTimeFields);
   els.exportCsvBtn.addEventListener("click", exportCsv);
   els.exportAllCsvBtn.addEventListener("click", exportAllCsv);
   els.printBtn.addEventListener("click", () => window.print());
   els.worksiteForm.addEventListener("submit", saveWorksiteSettings);
   els.saveWorksiteBtn.addEventListener("click", saveWorksiteSettings);
   els.useCurrentLocationBtn.addEventListener("click", setWorksiteFromCurrentLocation);
-
-  [els.hourlyRate, els.overtimeMultiplier, els.standardHours].forEach((input) => {
-    input.addEventListener("input", () => {
-      settings = {
-        hourlyRate: Number(els.hourlyRate.value) || 0,
-        overtimeMultiplier: Number(els.overtimeMultiplier.value) || 1,
-        standardHours: Number(els.standardHours.value) || 8,
-      };
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-      render();
-    });
-  });
 }
 
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw-v7.js").catch(() => {});
+    navigator.serviceWorker.register("./sw-v8.js").catch(() => {});
   });
 }
 
@@ -251,12 +208,6 @@ function switchTab(tab) {
   });
 }
 
-function hydrateSettings() {
-  els.hourlyRate.value = settings.hourlyRate;
-  els.overtimeMultiplier.value = settings.overtimeMultiplier;
-  els.standardHours.value = settings.standardHours;
-}
-
 function hydrateWorksite() {
   els.worksiteLat.value = worksite.latitude ?? "";
   els.worksiteLng.value = worksite.longitude ?? "";
@@ -298,7 +249,7 @@ async function stampTime(direction) {
   let record = records.find((item) => item.date === date && item.type === "work");
 
   if (!record) {
-    record = createRecord({ date, type: "work", breakMinutes: 60 });
+    record = createRecord({ date, type: "work" });
     records.push(record);
   }
 
@@ -316,34 +267,6 @@ async function stampTime(direction) {
   persistRecords();
   selectedMonth = date.slice(0, 7);
   updateMonth(selectedMonth);
-}
-
-function saveManualRecord(event) {
-  event.preventDefault();
-  const type = els.recordType.value;
-  const record = createRecord({
-    date: els.recordDate.value,
-    type,
-    startTime: type === "work" ? els.startTime.value : "",
-    endTime: type === "work" ? els.endTime.value : "",
-    breakMinutes: type === "work" ? Number(els.breakMinutes.value) || 0 : 0,
-    note: els.note.value.trim(),
-  });
-
-  const existingIndex = records.findIndex((item) => item.id === record.id);
-  if (existingIndex >= 0) {
-    records[existingIndex] = record;
-  } else {
-    records.push(record);
-  }
-
-  persistRecords();
-  selectedMonth = record.date.slice(0, 7);
-  updateMonth(selectedMonth);
-  els.recordForm.reset();
-  els.recordDate.value = todayKey();
-  els.breakMinutes.value = "60";
-  syncTimeFields();
 }
 
 function createRecord(input) {
@@ -554,13 +477,6 @@ function toRadians(value) {
   return (value * Math.PI) / 180;
 }
 
-function syncTimeFields() {
-  const isWork = els.recordType.value === "work";
-  document.querySelectorAll(".time-field").forEach((field) => {
-    field.style.display = isWork ? "grid" : "none";
-  });
-}
-
 function updateMonth(month) {
   selectedMonth = month || selectedMonth;
   els.monthPicker.value = selectedMonth;
@@ -582,7 +498,6 @@ function shiftMonth(amount) {
 function render() {
   const monthRecords = getMonthRecords();
   renderRecords(monthRecords);
-  renderSalary(monthRecords);
   renderLeave(monthRecords);
   renderHrDashboard();
   tickClock();
@@ -606,10 +521,7 @@ function renderRecords(monthRecords) {
       <td>${leaveLabels[record.type] || record.type}</td>
       <td>${record.startTime || "-"}</td>
       <td>${record.endTime || "-"}</td>
-      <td>${record.breakMinutes || 0} 分</td>
       <td>${formatHours(computed.hours)}</td>
-      <td>${formatHours(computed.overtime)}</td>
-      <td>${formatMoney(computed.pay)}</td>
       <td>${formatLocationSummary(record)}</td>
       <td>${formatLeaveDays(getLeaveDays(record))}</td>
       <td>${escapeHtml(record.note || "-")}</td>
@@ -624,45 +536,6 @@ function renderRecords(monthRecords) {
       persistRecords();
       render();
     });
-  });
-}
-
-function renderSalary(monthRecords) {
-  const workRecords = monthRecords.filter((record) => record.type === "work");
-  const totals = workRecords.reduce(
-    (sum, record) => {
-      const computed = calculateRecord(record);
-      sum.hours += computed.hours;
-      sum.overtime += computed.overtime;
-      sum.pay += computed.pay;
-      return sum;
-    },
-    { hours: 0, overtime: 0, pay: 0 },
-  );
-
-  els.totalHours.textContent = formatHours(totals.hours);
-  els.overtimeHours.textContent = formatHours(totals.overtime);
-  els.workDays.textContent = workRecords.length;
-  els.totalPay.textContent = formatMoney(totals.pay);
-  els.salaryRange.textContent = selectedMonth;
-  renderHoursChart(workRecords);
-}
-
-function renderHoursChart(workRecords) {
-  els.hoursChart.innerHTML = "";
-  if (workRecords.length === 0) {
-    els.hoursChart.innerHTML = '<p class="empty-state is-visible">本月尚無工時</p>';
-    return;
-  }
-
-  const maxHours = Math.max(...workRecords.map((record) => calculateRecord(record).hours), settings.standardHours, 1);
-  workRecords.forEach((record) => {
-    const computed = calculateRecord(record);
-    const item = els.barTemplate.content.firstElementChild.cloneNode(true);
-    item.querySelector(".bar-label").textContent = record.date.slice(5);
-    item.querySelector(".bar-track span").style.width = `${Math.round((computed.hours / maxHours) * 100)}%`;
-    item.querySelector(".bar-value").textContent = formatHours(computed.hours);
-    els.hoursChart.append(item);
   });
 }
 
@@ -714,20 +587,16 @@ function renderLeaveTable(leaveRecords) {
 
 function calculateRecord(record) {
   if (record.type !== "work" || !record.startTime || !record.endTime) {
-    return { hours: 0, overtime: 0, pay: 0 };
+    return { hours: 0 };
   }
 
   const start = parseMinutes(record.startTime);
   let end = parseMinutes(record.endTime);
   if (end < start) end += 24 * 60;
 
-  const minutes = Math.max(end - start - record.breakMinutes, 0);
+  const minutes = Math.max(end - start - (Number(record.breakMinutes) || 0), 0);
   const hours = roundToQuarter(minutes / 60);
-  const regular = Math.min(hours, settings.standardHours);
-  const overtime = Math.max(hours - settings.standardHours, 0);
-  const pay = regular * settings.hourlyRate + overtime * settings.hourlyRate * settings.overtimeMultiplier;
-
-  return { hours, overtime, pay };
+  return { hours };
 }
 
 function parseMinutes(time) {
@@ -741,7 +610,7 @@ function roundToQuarter(value) {
 
 function exportCsv() {
   const rows = [
-    ["日期", "類型", "上班", "下班", "休息分鐘", "工時", "加班", "薪資", "上班定位距離", "下班定位距離", "請假天數", "備註"],
+    ["日期", "類型", "上班", "下班", "工時", "上班定位距離", "下班定位距離", "請假天數", "備註"],
     ...getMonthRecords().map((record) => {
       const computed = calculateRecord(record);
       return [
@@ -749,10 +618,7 @@ function exportCsv() {
         leaveLabels[record.type] || record.type,
         record.startTime,
         record.endTime,
-        record.breakMinutes,
         computed.hours,
-        computed.overtime,
-        Math.round(computed.pay),
         formatLocationDistance(record.clockInLocation),
         formatLocationDistance(record.clockOutLocation),
         getLeaveDays(record),
@@ -824,7 +690,7 @@ function exportAllCsv() {
   if (!isHr()) return;
 
   const rows = [
-    ["工號", "姓名", "日期", "類型", "上班", "下班", "休息分鐘", "工時", "加班", "薪資", "上班定位距離", "下班定位距離", "請假天數", "備註"],
+    ["工號", "姓名", "日期", "類型", "上班", "下班", "工時", "上班定位距離", "下班定位距離", "請假天數", "備註"],
     ...getAllEmployeeRecords()
       .filter((item) => item.record.date.startsWith(selectedMonth))
       .map(({ account, record }) => {
@@ -836,10 +702,7 @@ function exportAllCsv() {
           leaveLabels[record.type] || record.type,
           record.startTime,
           record.endTime,
-          record.breakMinutes,
           computed.hours,
-          computed.overtime,
-          Math.round(computed.pay),
           formatLocationDistance(record.clockInLocation),
           formatLocationDistance(record.clockOutLocation),
           getLeaveDays(record),
@@ -893,14 +756,6 @@ function loadRecordsForEmployee(employeeId) {
 
 function employeeRecordsKey(employeeId) {
   return `${STORAGE_KEY}-${employeeId}`;
-}
-
-function loadSettings() {
-  try {
-    return { ...defaultSettings, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}) };
-  } catch {
-    return { ...defaultSettings };
-  }
 }
 
 function loadWorksite() {
@@ -976,14 +831,6 @@ function formatDate(date) {
 
 function formatHours(value) {
   return `${Number(value).toFixed(2)}h`;
-}
-
-function formatMoney(value) {
-  return new Intl.NumberFormat("zh-TW", {
-    style: "currency",
-    currency: "TWD",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
 }
 
 function formatLocationSummary(record) {

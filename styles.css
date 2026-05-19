@@ -155,7 +155,6 @@ body:not(.is-hr) .hr-only {
 }
 
 .brand p,
-.settings-panel h2,
 .eyebrow {
   margin: 0;
   color: #aebdc5;
@@ -221,28 +220,12 @@ body:not(.is-hr) .hr-only {
   display: none;
 }
 
-.settings-panel {
-  display: grid;
-  gap: 14px;
-  margin-top: auto;
-  padding-top: 24px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.settings-panel label,
-.entry-panel label,
 .leave-panel label {
   display: grid;
   gap: 7px;
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
-}
-
-.settings-panel input {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: #22333c;
-  color: #ffffff;
 }
 
 .workspace {
@@ -252,8 +235,6 @@ body:not(.is-hr) .hr-only {
 
 .topbar,
 .clock-panel,
-.entry-panel,
-.bar-panel,
 .leave-panel,
 .worksite-panel,
 .table-wrap {
@@ -357,13 +338,12 @@ select {
 
 .clock-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+  grid-template-columns: minmax(280px, 560px);
   gap: 22px;
+  justify-content: center;
 }
 
 .clock-panel,
-.entry-panel,
-.bar-panel,
 .worksite-panel {
   padding: 22px;
 }
@@ -416,7 +396,6 @@ select {
   flex: 1;
 }
 
-.entry-panel h2,
 .leave-panel h2,
 .section-header h2 {
   margin: 0;
@@ -463,7 +442,7 @@ select {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1040px;
+  min-width: 820px;
 }
 
 th,
@@ -580,11 +559,6 @@ td {
   letter-spacing: 0;
 }
 
-.bar-panel {
-  margin-top: 20px;
-  box-shadow: none;
-}
-
 .leave-panel {
   padding: 22px;
   box-shadow: none;
@@ -592,41 +566,6 @@ td {
 
 .leave-history {
   margin-top: 20px;
-}
-
-.bar-chart {
-  display: grid;
-  gap: 12px;
-}
-
-.bar-item {
-  display: grid;
-  grid-template-columns: 86px 1fr 72px;
-  gap: 12px;
-  align-items: center;
-}
-
-.bar-label,
-.bar-value {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.bar-track {
-  height: 12px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #e8eef1;
-}
-
-.bar-track span {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--blue);
 }
 
 .leave-card[data-type="annual"] strong {
@@ -655,16 +594,12 @@ td {
   }
 
   .nav-tabs {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .nav-tab {
     padding: 10px 8px;
     text-align: center;
-  }
-
-  .settings-panel {
-    margin-top: 0;
   }
 
   .metric-grid,
@@ -694,7 +629,7 @@ td {
   .form-grid,
   .metric-grid,
   .leave-grid,
-  .bar-item {
+  .clock-grid {
     grid-template-columns: 1fr;
   }
 
@@ -719,9 +654,7 @@ td {
   .button-group,
   .danger-button,
   .clock-panel,
-  .entry-panel,
   .metric-grid,
-  .bar-panel,
   .leave-grid {
     display: none !important;
   }
