@@ -42,6 +42,10 @@ const els = {
   liveClock: document.querySelector("#liveClock"),
   clockStatus: document.querySelector("#clockStatus"),
   locationStatus: document.querySelector("#locationStatus"),
+  locationMapPanel: document.querySelector("#locationMapPanel"),
+  locationMapPin: document.querySelector("#locationMapPin"),
+  locationMapMeta: document.querySelector("#locationMapMeta"),
+  locationMapLink: document.querySelector("#locationMapLink"),
   monthTitle: document.querySelector("#monthTitle"),
   monthPicker: document.querySelector("#monthPicker"),
   prevMonth: document.querySelector("#prevMonth"),
@@ -123,7 +127,7 @@ function bindEvents() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw-v8.js").catch(() => {});
+    navigator.serviceWorker.register("./sw-v9.js").catch(() => {});
   });
 }
 
@@ -263,6 +267,7 @@ async function stampTime(direction) {
   }
 
   els.locationStatus.textContent = `${direction === "in" ? "上班" : "下班"}打卡成功，距離打卡點 ${formatMeters(locationCheck.location.distanceMeters)}`;
+  renderLocationMap(locationCheck.location, direction === "in" ? "上班打卡" : "下班打卡");
 
   persistRecords();
   selectedMonth = date.slice(0, 7);
@@ -500,6 +505,7 @@ function render() {
   renderRecords(monthRecords);
   renderLeave(monthRecords);
   renderHrDashboard();
+  renderLatestLocationMap();
   tickClock();
 }
 
@@ -537,6 +543,64 @@ function renderRecords(monthRecords) {
       render();
     });
   });
+}
+
+function renderLatestLocationMap() {
+  const latest = getLatestClockLocation();
+  if (!latest) {
+    els.locationMapPanel.hidden = true;
+    return;
+  }
+
+  renderLocationMap(latest.location, latest.label);
+}
+
+function getLatestClockLocation() {
+  return records
+    .filter((record) => record.type === "work" && (record.clockInLocation || record.clockOutLocation))
+    .flatMap((record) => [
+      record.clockInLocation ? { label: "上班打卡", location: record.clockInLocation } : null,
+      record.clockOutLocation ? { label: "下班打卡", location: record.clockOutLocation } : null,
+    ])
+    .filter(Boolean)
+    .sort((a, b) => String(b.location.capturedAt || "").localeCompare(String(a.location.capturedAt || "")))[0];
+}
+
+function renderLocationMap(location, label) {
+  if (!hasWorksite() || !location) {
+    els.locationMapPanel.hidden = true;
+    return;
+  }
+
+  const offset = locationOffsetMeters(worksite, location);
+  const scale = Math.max(worksite.radiusMeters, location.distanceMeters || 1);
+  const x = clamp(50 + (offset.x / scale) * 38, 8, 92);
+  const y = clamp(50 - (offset.y / scale) * 38, 8, 92);
+
+  els.locationMapPanel.hidden = false;
+  els.locationMapPin.style.left = `${x}%`;
+  els.locationMapPin.style.top = `${y}%`;
+  els.locationMapMeta.textContent = [
+    label,
+    formatCapturedAt(location.capturedAt),
+    `距離 ${formatMeters(location.distanceMeters)}`,
+    location.accuracy ? `定位精度約 ${formatMeters(location.accuracy)}` : "",
+  ]
+    .filter(Boolean)
+    .join("｜");
+  els.locationMapLink.href = externalMapUrl(location);
+}
+
+function locationOffsetMeters(center, location) {
+  const averageLat = toRadians((center.latitude + location.latitude) / 2);
+  return {
+    x: toRadians(location.longitude - center.longitude) * 6371000 * Math.cos(averageLat),
+    y: toRadians(location.latitude - center.latitude) * 6371000,
+  };
+}
+
+function externalMapUrl(location) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${location.latitude},${location.longitude}`)}`;
 }
 
 function renderLeave(monthRecords) {
@@ -829,6 +893,19 @@ function formatDate(date) {
   });
 }
 
+function formatCapturedAt(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("zh-TW", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 function formatHours(value) {
   return `${Number(value).toFixed(2)}h`;
 }
@@ -850,6 +927,10 @@ function formatMeters(value) {
   const meters = Number(value) || 0;
   if (meters >= 1000) return `${(meters / 1000).toFixed(2)} 公里`;
   return `${Math.round(meters)} 公尺`;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function getLeaveDays(record) {

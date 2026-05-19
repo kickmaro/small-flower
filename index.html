@@ -9,10 +9,10 @@
     <meta name="apple-mobile-web-app-title" content="洪小花打卡系統" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>洪小花打卡系統</title>
-    <link rel="manifest" href="manifest.webmanifest?v=8" />
+    <link rel="manifest" href="manifest.webmanifest?v=9" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=8" />
+    <link rel="stylesheet" href="styles.css?v=9" />
   </head>
   <body>
     <section class="login-screen" aria-label="登入">
@@ -83,6 +83,27 @@
                 <button class="secondary-button" id="clockOutBtn" type="button">下班打卡</button>
               </div>
               <p class="location-status" id="locationStatus" aria-live="polite">打卡會檢查定位範圍</p>
+            </section>
+
+            <section class="map-panel" id="locationMapPanel" hidden>
+              <div class="section-header compact">
+                <div>
+                  <span class="eyebrow">Location</span>
+                  <h2>本次打卡位置</h2>
+                </div>
+                <a class="map-link" id="locationMapLink" href="#" target="_blank" rel="noopener">開啟外部地圖</a>
+              </div>
+              <div class="location-map" aria-label="打卡位置範圍圖">
+                <div class="map-grid" aria-hidden="true"></div>
+                <div class="map-radius" aria-hidden="true"></div>
+                <div class="map-center" aria-hidden="true">
+                  <span>公司</span>
+                </div>
+                <div class="map-pin" id="locationMapPin" aria-hidden="true">
+                  <span>我</span>
+                </div>
+              </div>
+              <p class="map-meta" id="locationMapMeta"></p>
             </section>
 
           </div>
@@ -306,6 +327,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=8"></script>
+    <script src="app.js?v=9"></script>
   </body>
 </html>

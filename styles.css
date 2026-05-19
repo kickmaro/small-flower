@@ -235,6 +235,7 @@ body:not(.is-hr) .hr-only {
 
 .topbar,
 .clock-panel,
+.map-panel,
 .leave-panel,
 .worksite-panel,
 .table-wrap {
@@ -344,6 +345,7 @@ select {
 }
 
 .clock-panel,
+.map-panel,
 .worksite-panel {
   padding: 22px;
 }
@@ -386,6 +388,101 @@ select {
   padding: 11px 12px;
   background: #effaf6;
   color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.map-panel[hidden] {
+  display: none;
+}
+
+.map-panel {
+  box-shadow: none;
+}
+
+.map-link {
+  align-self: center;
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.map-link:hover {
+  text-decoration: underline;
+}
+
+.location-map {
+  position: relative;
+  min-height: 280px;
+  overflow: hidden;
+  border: 1px solid #cfe0d9;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(15, 123, 108, 0.1) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(15, 123, 108, 0.1) 1px, transparent 1px),
+    linear-gradient(145deg, #f3fbf7 0%, #fff8e6 100%);
+  background-size: 36px 36px, 36px 36px, auto;
+}
+
+.map-grid {
+  position: absolute;
+  inset: 18px;
+  border: 1px dashed rgba(15, 123, 108, 0.24);
+  border-radius: 8px;
+}
+
+.map-radius {
+  position: absolute;
+  inset: 13%;
+  border: 2px solid rgba(15, 123, 108, 0.55);
+  border-radius: 50%;
+  background: rgba(199, 234, 223, 0.22);
+}
+
+.map-center,
+.map-pin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: 0 10px 24px rgba(23, 32, 38, 0.18);
+}
+
+.map-center {
+  border: 3px solid #ffffff;
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.map-pin {
+  border: 3px solid #ffffff;
+  background: var(--sun);
+  color: #18262e;
+}
+
+.map-pin::after {
+  position: absolute;
+  bottom: -9px;
+  width: 0;
+  height: 0;
+  border-top: 12px solid var(--sun);
+  border-right: 8px solid transparent;
+  border-left: 8px solid transparent;
+  content: "";
+}
+
+.map-meta {
+  margin: 12px 0 0;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 800;
   line-height: 1.5;
@@ -654,6 +751,7 @@ td {
   .button-group,
   .danger-button,
   .clock-panel,
+  .map-panel,
   .metric-grid,
   .leave-grid {
     display: none !important;
