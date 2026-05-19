@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#152229" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="洪小花打卡系統" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>洪小花打卡系統</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section class="login-screen" aria-label="登入">
+      <form class="login-card" id="loginForm">
+        <h1>洪小花打卡系統</h1>
+        <label>
+          工號
+          <input id="employeeId" type="text" autocomplete="username" required />
+        </label>
+        <label>
+          密碼
+          <input id="employeePassword" type="password" autocomplete="current-password" required />
+        </label>
+        <p class="login-error" id="loginError" aria-live="polite"></p>
+        <button class="primary-button form-submit" type="submit">登入</button>
+      </form>
+    </section>
+
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主要導覽">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">打</div>
+          <div>
+            <h1>洪小花打卡系統</h1>
+            <p id="todayText"></p>
+          </div>
+        </div>
+        <nav class="nav-tabs" aria-label="功能切換">
+          <button class="nav-tab is-active" type="button" data-tab="clock">打卡</button>
+          <button class="nav-tab" type="button" data-tab="records">紀錄</button>
+          <button class="nav-tab" type="button" data-tab="salary">薪資</button>
+          <button class="nav-tab" type="button" data-tab="leave">請假</button>
+        </nav>
+        <div class="employee-panel">
+          <span>目前工號</span>
+          <strong id="currentEmployee">-</strong>
+          <button class="secondary-button" id="logoutBtn" type="button">登出</button>
+          <button class="secondary-button install-button" id="installBtn" type="button" hidden>安裝 App</button>
+        </div>
+        <div class="settings-panel">
+          <h2>薪資設定</h2>
+          <label>
+            時薪
+            <input id="hourlyRate" type="number" min="0" step="1" />
+          </label>
+          <label>
+            加班倍率
+            <input id="overtimeMultiplier" type="number" min="1" step="0.1" />
+          </label>
+          <label>
+            正常工時
+            <input id="standardHours" type="number" min="1" max="24" step="0.5" />
+          </label>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <section class="topbar" aria-label="月份篩選">
+          <div>
+            <span class="eyebrow">目前月份</span>
+            <strong id="monthTitle"></strong>
+          </div>
+          <div class="month-controls">
+            <button class="icon-button" id="prevMonth" type="button" aria-label="上一個月">‹</button>
+            <input id="monthPicker" type="month" />
+            <button class="icon-button" id="nextMonth" type="button" aria-label="下一個月">›</button>
+          </div>
+        </section>
+
+        <section class="view is-active" id="clockView" data-view="clock">
+          <div class="clock-grid">
+            <section class="clock-panel">
+              <div class="clock-face">
+                <span id="liveDate"></span>
+                <strong id="liveClock"></strong>
+                <small id="clockStatus"></small>
+              </div>
+              <div class="action-row">
+                <button class="primary-button" id="clockInBtn" type="button">上班打卡</button>
+                <button class="secondary-button" id="clockOutBtn" type="button">下班打卡</button>
+              </div>
+            </section>
+
+            <section class="entry-panel">
+              <h2>新增紀錄</h2>
+              <form id="recordForm">
+                <div class="form-grid">
+                  <label>
+                    日期
+                    <input id="recordDate" type="date" required />
+                  </label>
+                  <label>
+                    類型
+                    <select id="recordType">
+                      <option value="work">上班</option>
+                      <option value="annual">特休</option>
+                      <option value="sick">病假</option>
+                      <option value="personal">事假</option>
+                      <option value="official">公假</option>
+                      <option value="unpaid">無薪假</option>
+                    </select>
+                  </label>
+                  <label class="time-field">
+                    上班時間
+                    <input id="startTime" type="time" />
+                  </label>
+                  <label class="time-field">
+                    下班時間
+                    <input id="endTime" type="time" />
+                  </label>
+                  <label>
+                    休息分鐘
+                    <input id="breakMinutes" type="number" min="0" step="5" />
+                  </label>
+                  <label>
+                    備註
+                    <input id="note" type="text" maxlength="80" />
+                  </label>
+                </div>
+                <button class="primary-button form-submit" type="submit">儲存紀錄</button>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="recordsView" data-view="records">
+          <div class="section-header">
+            <div>
+              <span class="eyebrow">Attendance</span>
+              <h2>打卡紀錄</h2>
+            </div>
+            <div class="button-group">
+              <button class="secondary-button" id="exportCsvBtn" type="button">匯出 CSV</button>
+              <button class="secondary-button" id="printBtn" type="button">列印</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>類型</th>
+                  <th>上班</th>
+                  <th>下班</th>
+                  <th>休息</th>
+                  <th>工時</th>
+                  <th>加班</th>
+                  <th>薪資</th>
+                  <th>請假天數</th>
+                  <th>備註</th>
+                  <th aria-label="操作"></th>
+                </tr>
+              </thead>
+              <tbody id="recordsTable"></tbody>
+            </table>
+          </div>
+          <p class="empty-state" id="emptyRecords">本月尚無紀錄</p>
+        </section>
+
+        <section class="view" id="salaryView" data-view="salary">
+          <div class="section-header">
+            <div>
+              <span class="eyebrow">Payroll</span>
+              <h2>薪資統計</h2>
+            </div>
+          </div>
+          <div class="metric-grid">
+            <article class="metric">
+              <span>總工時</span>
+              <strong id="totalHours">0</strong>
+            </article>
+            <article class="metric">
+              <span>加班時數</span>
+              <strong id="overtimeHours">0</strong>
+            </article>
+            <article class="metric">
+              <span>出勤天數</span>
+              <strong id="workDays">0</strong>
+            </article>
+            <article class="metric">
+              <span>預估薪資</span>
+              <strong id="totalPay">$0</strong>
+            </article>
+          </div>
+          <div class="bar-panel">
+            <div class="section-header compact">
+              <h2>每日工時</h2>
+              <span id="salaryRange"></span>
+            </div>
+            <div class="bar-chart" id="hoursChart"></div>
+          </div>
+        </section>
+
+        <section class="view" id="leaveView" data-view="leave">
+          <div class="section-header">
+            <div>
+              <span class="eyebrow">Leave</span>
+              <h2>請假管理</h2>
+            </div>
+          </div>
+          <div class="leave-workspace">
+            <section class="leave-panel">
+              <h2>請假申請</h2>
+              <form id="leaveForm">
+                <div class="form-grid">
+                  <label>
+                    假別
+                    <select id="leaveType">
+                      <option value="annual">特休</option>
+                      <option value="sick">病假</option>
+                      <option value="personal">事假</option>
+                      <option value="official">公假</option>
+                      <option value="unpaid">無薪假</option>
+                    </select>
+                  </label>
+                  <label>
+                    天數類型
+                    <select id="leaveDuration">
+                      <option value="1">全天</option>
+                      <option value="0.5-am">上午半天</option>
+                      <option value="0.5-pm">下午半天</option>
+                    </select>
+                  </label>
+                  <label>
+                    開始日期
+                    <input id="leaveStartDate" type="date" required />
+                  </label>
+                  <label>
+                    結束日期
+                    <input id="leaveEndDate" type="date" required />
+                  </label>
+                  <label class="wide-field">
+                    請假原因
+                    <input id="leaveReason" type="text" maxlength="80" placeholder="例：家中有事、看診" />
+                  </label>
+                </div>
+                <button class="primary-button form-submit" type="submit">送出請假</button>
+              </form>
+            </section>
+
+            <section class="leave-panel">
+              <div class="section-header compact">
+                <h2>假別統計</h2>
+                <span id="leaveRange"></span>
+              </div>
+              <div class="leave-grid" id="leaveStats"></div>
+            </section>
+          </div>
+
+          <section class="leave-history">
+            <div class="section-header compact">
+              <h2>本月請假紀錄</h2>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th>假別</th>
+                    <th>天數</th>
+                    <th>原因</th>
+                    <th aria-label="操作"></th>
+                  </tr>
+                </thead>
+                <tbody id="leaveTable"></tbody>
+              </table>
+            </div>
+            <p class="empty-state" id="emptyLeave">本月尚無請假紀錄</p>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <template id="barTemplate">
+      <div class="bar-item">
+        <div class="bar-label"></div>
+        <div class="bar-track"><span></span></div>
+        <div class="bar-value"></div>
+      </div>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>

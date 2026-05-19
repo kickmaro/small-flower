@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#152229"/>
+  <rect x="72" y="72" width="368" height="368" rx="84" fill="#0f7b6c"/>
+  <path fill="#f0b44c" d="M162 150h188c18 0 32 14 32 32v26H130v-26c0-18 14-32 32-32Zm-32 94h252v118c0 18-14 32-32 32H162c-18 0-32-14-32-32V244Zm65 35v48h122v-48H195Z"/>
+  <path fill="#ffffff" d="M192 125h34v62h-34zm94 0h34v62h-34z"/>
+  <text x="256" y="344" text-anchor="middle" font-family="Arial, 'Noto Sans TC', sans-serif" font-size="92" font-weight="800" fill="#ffffff">打</text>
+</svg>
