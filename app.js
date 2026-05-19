@@ -152,7 +152,7 @@ function bindEvents() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js?v=3").catch(() => {});
+    navigator.serviceWorker.register("./sw-v3.js").catch(() => {});
   });
 }
 
