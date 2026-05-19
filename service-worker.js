@@ -1,10 +1,10 @@
-const CACHE_NAME = "hong-xiao-hua-clock-v2";
+const CACHE_NAME = "hong-xiao-hua-clock-v3";
 const APP_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./manifest.webmanifest",
+  "./styles.css?v=3",
+  "./app.js?v=3",
+  "./manifest.webmanifest?v=3",
   "./icons/icon.svg",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

@@ -7,6 +7,7 @@ let deferredInstallPrompt = null;
 const employeeAccounts = [
   { id: "A001", name: "洪小花", password: "1234", role: "employee" },
   { id: "A002", name: "林小明", password: "2222", role: "employee" },
+  { id: "HR0001", name: "HR 管理員", password: "hr1234", role: "hr" },
   { id: "HR001", name: "HR 管理員", password: "hr1234", role: "hr" },
 ];
 
@@ -151,7 +152,7 @@ function bindEvents() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js?v=3").catch(() => {});
   });
 }
 
