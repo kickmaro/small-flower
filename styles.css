@@ -255,6 +255,7 @@ body:not(.is-hr) .hr-only {
 .entry-panel,
 .bar-panel,
 .leave-panel,
+.worksite-panel,
 .table-wrap {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -362,7 +363,8 @@ select {
 
 .clock-panel,
 .entry-panel,
-.bar-panel {
+.bar-panel,
+.worksite-panel {
   padding: 22px;
 }
 
@@ -395,6 +397,18 @@ select {
 
 .action-row {
   margin-top: 18px;
+}
+
+.location-status {
+  margin: 12px 0 0;
+  border: 1px solid #b9dfd6;
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #effaf6;
+  color: var(--accent-dark);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
 }
 
 .action-row button,
@@ -449,7 +463,7 @@ select {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 940px;
+  min-width: 1040px;
 }
 
 th,
@@ -537,6 +551,22 @@ td {
   line-height: 1.6;
 }
 
+.worksite-panel {
+  margin-bottom: 18px;
+  background:
+    linear-gradient(135deg, rgba(15, 123, 108, 0.08), rgba(240, 180, 76, 0.12)),
+    #ffffff;
+  box-shadow: none;
+}
+
+.worksite-panel .section-header span {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .metric span,
 .leave-card span {
   color: var(--muted);
@@ -619,8 +649,6 @@ td {
   }
 
   .sidebar {
-    position: sticky;
-    top: 0;
     z-index: 10;
     min-height: auto;
     padding: max(18px, env(safe-area-inset-top)) 18px 14px;

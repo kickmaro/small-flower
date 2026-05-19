@@ -9,10 +9,10 @@
     <meta name="apple-mobile-web-app-title" content="洪小花打卡系統" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>洪小花打卡系統</title>
-    <link rel="manifest" href="manifest.webmanifest?v=3" />
+    <link rel="manifest" href="manifest.webmanifest?v=7" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <link rel="stylesheet" href="styles.css?v=7" />
   </head>
   <body>
     <section class="login-screen" aria-label="登入">
@@ -98,6 +98,7 @@
                 <button class="primary-button" id="clockInBtn" type="button">上班打卡</button>
                 <button class="secondary-button" id="clockOutBtn" type="button">下班打卡</button>
               </div>
+              <p class="location-status" id="locationStatus" aria-live="polite">打卡會檢查定位範圍</p>
             </section>
 
             <section class="entry-panel">
@@ -165,6 +166,7 @@
                   <th>工時</th>
                   <th>加班</th>
                   <th>薪資</th>
+                  <th>定位</th>
                   <th>請假天數</th>
                   <th>備註</th>
                   <th aria-label="操作"></th>
@@ -302,6 +304,33 @@
             <p>HR 後台只能讀取「同一台裝置、同一個瀏覽器」裡的資料。若員工各自在手機上打卡，HR 要集中取得紀錄，需要接資料庫後端，例如 Firebase、Supabase 或公司伺服器 API。</p>
           </div>
 
+          <section class="worksite-panel">
+            <div class="section-header compact">
+              <div>
+                <h2>打卡範圍設定</h2>
+                <span id="worksiteStatus">尚未設定範圍</span>
+              </div>
+              <button class="secondary-button" id="useCurrentLocationBtn" type="button">用目前位置設定</button>
+            </div>
+            <form id="worksiteForm" onsubmit="saveWorksiteSettings(event)">
+              <div class="form-grid">
+                <label>
+                  中心緯度
+                  <input id="worksiteLat" type="number" step="0.000001" placeholder="例：25.033964" required />
+                </label>
+                <label>
+                  中心經度
+                  <input id="worksiteLng" type="number" step="0.000001" placeholder="例：121.564468" required />
+                </label>
+                <label>
+                  允許半徑（公尺）
+                  <input id="worksiteRadius" type="number" min="20" step="10" placeholder="例：150" required />
+                </label>
+              </div>
+              <button class="primary-button form-submit" id="saveWorksiteBtn" type="button" onclick="saveWorksiteSettings(event)">儲存打卡範圍</button>
+            </form>
+          </section>
+
           <div class="metric-grid">
             <article class="metric">
               <span>員工數</span>
@@ -355,6 +384,7 @@
                     <th>上班</th>
                     <th>下班</th>
                     <th>工時</th>
+                    <th>定位</th>
                     <th>請假天數</th>
                     <th>備註</th>
                   </tr>
@@ -376,6 +406,6 @@
       </div>
     </template>
 
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=7"></script>
   </body>
 </html>

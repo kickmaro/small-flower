@@ -1,6 +1,7 @@
 const STORAGE_KEY = "clock-payroll-records-v1";
 const SETTINGS_KEY = "clock-payroll-settings-v1";
 const AUTH_KEY = "clock-payroll-current-employee-v1";
+const WORKSITE_KEY = "clock-payroll-worksite-v1";
 
 let deferredInstallPrompt = null;
 
@@ -32,6 +33,7 @@ let currentEmployeeId = sessionStorage.getItem(AUTH_KEY) || "";
 let currentAccount = null;
 let records = [];
 let settings = loadSettings();
+let worksite = loadWorksite();
 let selectedMonth = monthKey(new Date());
 
 const els = {
@@ -47,6 +49,7 @@ const els = {
   liveDate: document.querySelector("#liveDate"),
   liveClock: document.querySelector("#liveClock"),
   clockStatus: document.querySelector("#clockStatus"),
+  locationStatus: document.querySelector("#locationStatus"),
   monthTitle: document.querySelector("#monthTitle"),
   monthPicker: document.querySelector("#monthPicker"),
   prevMonth: document.querySelector("#prevMonth"),
@@ -54,6 +57,13 @@ const els = {
   hourlyRate: document.querySelector("#hourlyRate"),
   overtimeMultiplier: document.querySelector("#overtimeMultiplier"),
   standardHours: document.querySelector("#standardHours"),
+  worksiteForm: document.querySelector("#worksiteForm"),
+  worksiteLat: document.querySelector("#worksiteLat"),
+  worksiteLng: document.querySelector("#worksiteLng"),
+  worksiteRadius: document.querySelector("#worksiteRadius"),
+  worksiteStatus: document.querySelector("#worksiteStatus"),
+  saveWorksiteBtn: document.querySelector("#saveWorksiteBtn"),
+  useCurrentLocationBtn: document.querySelector("#useCurrentLocationBtn"),
   clockInBtn: document.querySelector("#clockInBtn"),
   clockOutBtn: document.querySelector("#clockOutBtn"),
   recordForm: document.querySelector("#recordForm"),
@@ -99,6 +109,7 @@ init();
 function init() {
   registerServiceWorker();
   hydrateSettings();
+  hydrateWorksite();
   bindEvents();
   setInterval(tickClock, 1000);
   els.recordDate.value = todayKey();
@@ -135,6 +146,9 @@ function bindEvents() {
   els.exportCsvBtn.addEventListener("click", exportCsv);
   els.exportAllCsvBtn.addEventListener("click", exportAllCsv);
   els.printBtn.addEventListener("click", () => window.print());
+  els.worksiteForm.addEventListener("submit", saveWorksiteSettings);
+  els.saveWorksiteBtn.addEventListener("click", saveWorksiteSettings);
+  els.useCurrentLocationBtn.addEventListener("click", setWorksiteFromCurrentLocation);
 
   [els.hourlyRate, els.overtimeMultiplier, els.standardHours].forEach((input) => {
     input.addEventListener("input", () => {
@@ -152,7 +166,7 @@ function bindEvents() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw-v3.js").catch(() => {});
+    navigator.serviceWorker.register("./sw-v7.js").catch(() => {});
   });
 }
 
@@ -243,6 +257,13 @@ function hydrateSettings() {
   els.standardHours.value = settings.standardHours;
 }
 
+function hydrateWorksite() {
+  els.worksiteLat.value = worksite.latitude ?? "";
+  els.worksiteLng.value = worksite.longitude ?? "";
+  els.worksiteRadius.value = worksite.radiusMeters ?? "";
+  renderWorksiteStatus();
+}
+
 function tickClock() {
   const now = new Date();
   els.todayText.textContent = formatDate(now);
@@ -263,7 +284,14 @@ function tickClock() {
   }
 }
 
-function stampTime(direction) {
+async function stampTime(direction) {
+  const locationCheck = await validateClockLocation();
+  if (!locationCheck.ok) {
+    els.locationStatus.textContent = locationCheck.message;
+    alert(locationCheck.message);
+    return;
+  }
+
   const now = new Date();
   const date = todayKey();
   const time = now.toTimeString().slice(0, 5);
@@ -276,10 +304,14 @@ function stampTime(direction) {
 
   if (direction === "in") {
     record.startTime = time;
+    record.clockInLocation = locationCheck.location;
   } else {
     record.endTime = time;
     if (!record.startTime) record.startTime = time;
+    record.clockOutLocation = locationCheck.location;
   }
+
+  els.locationStatus.textContent = `${direction === "in" ? "上班" : "下班"}打卡成功，距離打卡點 ${formatMeters(locationCheck.location.distanceMeters)}`;
 
   persistRecords();
   selectedMonth = date.slice(0, 7);
@@ -322,6 +354,8 @@ function createRecord(input) {
     startTime: input.startTime || "",
     endTime: input.endTime || "",
     breakMinutes: Number(input.breakMinutes) || 0,
+    clockInLocation: input.clockInLocation || null,
+    clockOutLocation: input.clockOutLocation || null,
     leaveDays: Number(input.leaveDays) || 0,
     leavePeriod: input.leavePeriod || "",
     note: input.note || "",
@@ -358,6 +392,166 @@ function saveLeaveRequest(event) {
   els.leaveForm.reset();
   els.leaveStartDate.value = todayKey();
   els.leaveEndDate.value = todayKey();
+}
+
+function saveWorksiteSettings(event) {
+  event.preventDefault();
+
+  const nextWorksite = parseWorksiteForm();
+  if (!nextWorksite) return;
+
+  worksite = nextWorksite;
+  localStorage.setItem(WORKSITE_KEY, JSON.stringify(worksite));
+  renderWorksiteStatus();
+  els.locationStatus.textContent = "打卡範圍已更新，下次打卡會檢查定位";
+}
+
+async function setWorksiteFromCurrentLocation() {
+  els.worksiteStatus.textContent = "正在讀取目前位置...";
+  els.useCurrentLocationBtn.disabled = true;
+
+  try {
+    const position = await getCurrentPosition();
+    els.worksiteLat.value = position.coords.latitude.toFixed(6);
+    els.worksiteLng.value = position.coords.longitude.toFixed(6);
+    if (!els.worksiteRadius.value) els.worksiteRadius.value = "150";
+
+    const nextWorksite = parseWorksiteForm();
+    if (!nextWorksite) return;
+
+    worksite = nextWorksite;
+    localStorage.setItem(WORKSITE_KEY, JSON.stringify(worksite));
+    renderWorksiteStatus();
+  } catch (error) {
+    els.worksiteStatus.textContent = geolocationErrorMessage(error);
+  } finally {
+    els.useCurrentLocationBtn.disabled = false;
+  }
+}
+
+function parseWorksiteForm() {
+  const latitude = Number(els.worksiteLat.value);
+  const longitude = Number(els.worksiteLng.value);
+  const radiusMeters = Number(els.worksiteRadius.value);
+
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    alert("請輸入有效的中心緯度");
+    return null;
+  }
+
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    alert("請輸入有效的中心經度");
+    return null;
+  }
+
+  if (!Number.isFinite(radiusMeters) || radiusMeters < 20) {
+    alert("允許半徑至少需要 20 公尺");
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude,
+    radiusMeters,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function renderWorksiteStatus() {
+  if (hasWorksite()) {
+    els.worksiteStatus.textContent = `中心 ${worksite.latitude.toFixed(6)}, ${worksite.longitude.toFixed(6)}｜半徑 ${Math.round(worksite.radiusMeters)} 公尺`;
+    els.locationStatus.textContent = `打卡需在半徑 ${Math.round(worksite.radiusMeters)} 公尺內`;
+    return;
+  }
+
+  els.worksiteStatus.textContent = "尚未設定範圍，員工暫時不能打卡";
+  els.locationStatus.textContent = "HR 尚未設定打卡範圍";
+}
+
+async function validateClockLocation() {
+  if (!hasWorksite()) {
+    return { ok: false, message: "尚未設定打卡範圍，請 HR 先設定中心點與半徑" };
+  }
+
+  if (!("geolocation" in navigator)) {
+    return { ok: false, message: "此裝置不支援定位，無法打卡" };
+  }
+
+  els.locationStatus.textContent = "正在檢查定位...";
+  els.clockInBtn.disabled = true;
+  els.clockOutBtn.disabled = true;
+
+  try {
+    const position = await getCurrentPosition();
+    const distanceMeters = distanceBetweenMeters(
+      position.coords.latitude,
+      position.coords.longitude,
+      worksite.latitude,
+      worksite.longitude,
+    );
+    const location = {
+      latitude: Number(position.coords.latitude.toFixed(6)),
+      longitude: Number(position.coords.longitude.toFixed(6)),
+      accuracy: Math.round(position.coords.accuracy || 0),
+      distanceMeters: Math.round(distanceMeters),
+      capturedAt: new Date().toISOString(),
+    };
+
+    if (distanceMeters > worksite.radiusMeters) {
+      return {
+        ok: false,
+        message: `目前距離打卡點 ${formatMeters(distanceMeters)}，超出允許半徑 ${Math.round(worksite.radiusMeters)} 公尺`,
+        location,
+      };
+    }
+
+    return { ok: true, message: "定位通過", location };
+  } catch (error) {
+    return { ok: false, message: geolocationErrorMessage(error) };
+  } finally {
+    els.clockInBtn.disabled = false;
+    els.clockOutBtn.disabled = false;
+  }
+}
+
+function getCurrentPosition() {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 30000,
+    });
+  });
+}
+
+function geolocationErrorMessage(error) {
+  if (error?.code === 1) return "定位授權被拒絕，請允許瀏覽器使用位置後再打卡";
+  if (error?.code === 2) return "目前無法取得定位，請確認 GPS 或網路狀態";
+  if (error?.code === 3) return "定位逾時，請移到訊號較好的位置再試一次";
+  return "無法取得定位，請確認此網頁使用 HTTPS 開啟";
+}
+
+function hasWorksite() {
+  return (
+    Number.isFinite(worksite.latitude) &&
+    Number.isFinite(worksite.longitude) &&
+    Number.isFinite(worksite.radiusMeters) &&
+    worksite.radiusMeters >= 20
+  );
+}
+
+function distanceBetweenMeters(lat1, lng1, lat2, lng2) {
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toRadians(value) {
+  return (value * Math.PI) / 180;
 }
 
 function syncTimeFields() {
@@ -416,6 +610,7 @@ function renderRecords(monthRecords) {
       <td>${formatHours(computed.hours)}</td>
       <td>${formatHours(computed.overtime)}</td>
       <td>${formatMoney(computed.pay)}</td>
+      <td>${formatLocationSummary(record)}</td>
       <td>${formatLeaveDays(getLeaveDays(record))}</td>
       <td>${escapeHtml(record.note || "-")}</td>
       <td><button class="danger-button" type="button" data-delete="${record.id}">刪除</button></td>
@@ -546,7 +741,7 @@ function roundToQuarter(value) {
 
 function exportCsv() {
   const rows = [
-    ["日期", "類型", "上班", "下班", "休息分鐘", "工時", "加班", "薪資", "請假天數", "備註"],
+    ["日期", "類型", "上班", "下班", "休息分鐘", "工時", "加班", "薪資", "上班定位距離", "下班定位距離", "請假天數", "備註"],
     ...getMonthRecords().map((record) => {
       const computed = calculateRecord(record);
       return [
@@ -558,6 +753,8 @@ function exportCsv() {
         computed.hours,
         computed.overtime,
         Math.round(computed.pay),
+        formatLocationDistance(record.clockInLocation),
+        formatLocationDistance(record.clockOutLocation),
         getLeaveDays(record),
         record.note,
       ];
@@ -579,6 +776,7 @@ function renderHrDashboard() {
   els.hrRecordCount.textContent = allRows.length;
   els.hrLeaveCount.textContent = formatLeaveNumber(leaveRows.reduce((sum, item) => sum + getLeaveDays(item.record), 0));
   els.hrHourCount.textContent = formatHours(totalHours);
+  renderWorksiteStatus();
   renderAccountTable();
   renderHrRecordsTable(allRows);
 }
@@ -614,6 +812,7 @@ function renderHrRecordsTable(rows) {
         <td>${record.startTime || "-"}</td>
         <td>${record.endTime || "-"}</td>
         <td>${formatHours(computed.hours)}</td>
+        <td>${formatLocationSummary(record)}</td>
         <td>${formatLeaveDays(getLeaveDays(record))}</td>
         <td>${escapeHtml(record.note || "-")}</td>
       `;
@@ -625,7 +824,7 @@ function exportAllCsv() {
   if (!isHr()) return;
 
   const rows = [
-    ["工號", "姓名", "日期", "類型", "上班", "下班", "休息分鐘", "工時", "加班", "薪資", "請假天數", "備註"],
+    ["工號", "姓名", "日期", "類型", "上班", "下班", "休息分鐘", "工時", "加班", "薪資", "上班定位距離", "下班定位距離", "請假天數", "備註"],
     ...getAllEmployeeRecords()
       .filter((item) => item.record.date.startsWith(selectedMonth))
       .map(({ account, record }) => {
@@ -641,6 +840,8 @@ function exportAllCsv() {
           computed.hours,
           computed.overtime,
           Math.round(computed.pay),
+          formatLocationDistance(record.clockInLocation),
+          formatLocationDistance(record.clockOutLocation),
           getLeaveDays(record),
           record.note,
         ];
@@ -699,6 +900,14 @@ function loadSettings() {
     return { ...defaultSettings, ...(JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}) };
   } catch {
     return { ...defaultSettings };
+  }
+}
+
+function loadWorksite() {
+  try {
+    return JSON.parse(localStorage.getItem(WORKSITE_KEY)) || {};
+  } catch {
+    return {};
   }
 }
 
@@ -775,6 +984,25 @@ function formatMoney(value) {
     currency: "TWD",
     maximumFractionDigits: 0,
   }).format(value || 0);
+}
+
+function formatLocationSummary(record) {
+  if (record.type !== "work") return "-";
+  const clockIn = formatLocationDistance(record.clockInLocation);
+  const clockOut = formatLocationDistance(record.clockOutLocation);
+  if (!clockIn && !clockOut) return "-";
+  return `上 ${clockIn || "-"} / 下 ${clockOut || "-"}`;
+}
+
+function formatLocationDistance(location) {
+  if (!location || !Number.isFinite(Number(location.distanceMeters))) return "";
+  return formatMeters(Number(location.distanceMeters));
+}
+
+function formatMeters(value) {
+  const meters = Number(value) || 0;
+  if (meters >= 1000) return `${(meters / 1000).toFixed(2)} 公里`;
+  return `${Math.round(meters)} 公尺`;
 }
 
 function getLeaveDays(record) {
