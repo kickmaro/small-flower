@@ -43,7 +43,7 @@ const els = {
   clockStatus: document.querySelector("#clockStatus"),
   locationStatus: document.querySelector("#locationStatus"),
   locationMapPanel: document.querySelector("#locationMapPanel"),
-  locationMapPin: document.querySelector("#locationMapPin"),
+  locationMapFrame: document.querySelector("#locationMapFrame"),
   locationMapMeta: document.querySelector("#locationMapMeta"),
   locationMapLink: document.querySelector("#locationMapLink"),
   monthTitle: document.querySelector("#monthTitle"),
@@ -127,7 +127,7 @@ function bindEvents() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw-v10.js").catch(() => {});
+    navigator.serviceWorker.register("./sw-v11.js").catch(() => {});
   });
 }
 
@@ -572,14 +572,8 @@ function renderLocationMap(location, label) {
     return;
   }
 
-  const offset = locationOffsetMeters(worksite, location);
-  const scale = Math.max(worksite.radiusMeters, location.distanceMeters || 1);
-  const x = clamp(50 + (offset.x / scale) * 38, 8, 92);
-  const y = clamp(50 - (offset.y / scale) * 38, 8, 92);
-
   els.locationMapPanel.hidden = false;
-  els.locationMapPin.style.left = `${x}%`;
-  els.locationMapPin.style.top = `${y}%`;
+  els.locationMapFrame.src = embeddedMapUrl(location);
   els.locationMapMeta.textContent = [
     label,
     formatCapturedAt(location.capturedAt),
@@ -591,12 +585,9 @@ function renderLocationMap(location, label) {
   els.locationMapLink.href = externalMapUrl(location);
 }
 
-function locationOffsetMeters(center, location) {
-  const averageLat = toRadians((center.latitude + location.latitude) / 2);
-  return {
-    x: toRadians(location.longitude - center.longitude) * 6371000 * Math.cos(averageLat),
-    y: toRadians(location.latitude - center.latitude) * 6371000,
-  };
+function embeddedMapUrl(location) {
+  const query = encodeURIComponent(`${location.latitude},${location.longitude}`);
+  return `https://maps.google.com/maps?q=${query}&z=18&output=embed`;
 }
 
 function externalMapUrl(location) {
@@ -927,10 +918,6 @@ function formatMeters(value) {
   const meters = Number(value) || 0;
   if (meters >= 1000) return `${(meters / 1000).toFixed(2)} 公里`;
   return `${Math.round(meters)} 公尺`;
-}
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
 }
 
 function getLeaveDays(record) {
