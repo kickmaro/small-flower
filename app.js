@@ -4,6 +4,12 @@ const AUTH_KEY = "clock-payroll-current-employee-v1";
 
 let deferredInstallPrompt = null;
 
+const employeeAccounts = [
+  { id: "A001", name: "洪小花", password: "1234", role: "employee" },
+  { id: "A002", name: "林小明", password: "2222", role: "employee" },
+  { id: "HR001", name: "HR 管理員", password: "hr1234", role: "hr" },
+];
+
 const leaveLabels = {
   work: "上班",
   annual: "特休",
@@ -22,6 +28,7 @@ const defaultSettings = {
 };
 
 let currentEmployeeId = sessionStorage.getItem(AUTH_KEY) || "";
+let currentAccount = null;
 let records = [];
 let settings = loadSettings();
 let selectedMonth = monthKey(new Date());
@@ -32,6 +39,7 @@ const els = {
   employeePassword: document.querySelector("#employeePassword"),
   loginError: document.querySelector("#loginError"),
   currentEmployee: document.querySelector("#currentEmployee"),
+  currentRole: document.querySelector("#currentRole"),
   logoutBtn: document.querySelector("#logoutBtn"),
   installBtn: document.querySelector("#installBtn"),
   todayText: document.querySelector("#todayText"),
@@ -74,6 +82,14 @@ const els = {
   leaveStats: document.querySelector("#leaveStats"),
   leaveTable: document.querySelector("#leaveTable"),
   emptyLeave: document.querySelector("#emptyLeave"),
+  exportAllCsvBtn: document.querySelector("#exportAllCsvBtn"),
+  accountTable: document.querySelector("#accountTable"),
+  hrRecordsTable: document.querySelector("#hrRecordsTable"),
+  emptyHrRecords: document.querySelector("#emptyHrRecords"),
+  hrEmployeeCount: document.querySelector("#hrEmployeeCount"),
+  hrRecordCount: document.querySelector("#hrRecordCount"),
+  hrLeaveCount: document.querySelector("#hrLeaveCount"),
+  hrHourCount: document.querySelector("#hrHourCount"),
   barTemplate: document.querySelector("#barTemplate"),
 };
 
@@ -116,6 +132,7 @@ function bindEvents() {
   els.leaveForm.addEventListener("submit", saveLeaveRequest);
   els.recordType.addEventListener("change", syncTimeFields);
   els.exportCsvBtn.addEventListener("click", exportCsv);
+  els.exportAllCsvBtn.addEventListener("click", exportAllCsv);
   els.printBtn.addEventListener("click", () => window.print());
 
   [els.hourlyRate, els.overtimeMultiplier, els.standardHours].forEach((input) => {
@@ -166,16 +183,25 @@ function handleLogin(event) {
     return;
   }
 
+  const account = employeeAccounts.find((item) => item.id === employeeId && item.password === password);
+  if (!account) {
+    els.loginError.textContent = "工號或密碼不正確";
+    return;
+  }
+
   els.loginError.textContent = "";
   els.employeePassword.value = "";
-  loginEmployee(employeeId);
+  loginEmployee(account.id);
 }
 
 function loginEmployee(employeeId) {
   currentEmployeeId = employeeId;
+  currentAccount = getAccount(employeeId);
   sessionStorage.setItem(AUTH_KEY, currentEmployeeId);
   records = loadRecords();
-  els.currentEmployee.textContent = currentEmployeeId;
+  els.currentEmployee.textContent = `${currentAccount.name} (${currentAccount.id})`;
+  els.currentRole.textContent = currentAccount.role === "hr" ? "HR 後台權限" : "員工";
+  document.body.classList.toggle("is-hr", currentAccount.role === "hr");
   document.body.classList.add("is-authenticated");
   updateMonth(selectedMonth);
 }
@@ -183,8 +209,11 @@ function loginEmployee(employeeId) {
 function logoutEmployee() {
   sessionStorage.removeItem(AUTH_KEY);
   currentEmployeeId = "";
+  currentAccount = null;
   records = [];
   els.currentEmployee.textContent = "-";
+  els.currentRole.textContent = "-";
+  document.body.classList.remove("is-hr");
   document.body.classList.remove("is-authenticated");
   els.employeeId.value = "";
   els.employeePassword.value = "";
@@ -198,6 +227,7 @@ function showLogin() {
 }
 
 function switchTab(tab) {
+  if (tab === "hr" && !isHr()) return;
   document.querySelectorAll(".nav-tab").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.tab === tab);
   });
@@ -359,6 +389,7 @@ function render() {
   renderRecords(monthRecords);
   renderSalary(monthRecords);
   renderLeave(monthRecords);
+  renderHrDashboard();
   tickClock();
 }
 
@@ -532,12 +563,105 @@ function exportCsv() {
     }),
   ];
 
+  downloadCsv(rows, `打卡紀錄-${selectedMonth}.csv`);
+}
+
+function renderHrDashboard() {
+  if (!isHr()) return;
+
+  const employeeAccountsOnly = employeeAccounts.filter((account) => account.role === "employee");
+  const allRows = getAllEmployeeRecords().filter((item) => item.record.date.startsWith(selectedMonth));
+  const leaveRows = allRows.filter((item) => leaveTypes.includes(item.record.type));
+  const totalHours = allRows.reduce((sum, item) => sum + calculateRecord(item.record).hours, 0);
+
+  els.hrEmployeeCount.textContent = employeeAccountsOnly.length;
+  els.hrRecordCount.textContent = allRows.length;
+  els.hrLeaveCount.textContent = formatLeaveNumber(leaveRows.reduce((sum, item) => sum + getLeaveDays(item.record), 0));
+  els.hrHourCount.textContent = formatHours(totalHours);
+  renderAccountTable();
+  renderHrRecordsTable(allRows);
+}
+
+function renderAccountTable() {
+  els.accountTable.innerHTML = "";
+  employeeAccounts.forEach((account) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${escapeHtml(account.id)}</td>
+      <td>${escapeHtml(account.name)}</td>
+      <td>${account.role === "hr" ? "HR" : "員工"}</td>
+      <td>${escapeHtml(account.password)}</td>
+    `;
+    els.accountTable.append(row);
+  });
+}
+
+function renderHrRecordsTable(rows) {
+  els.hrRecordsTable.innerHTML = "";
+  els.emptyHrRecords.classList.toggle("is-visible", rows.length === 0);
+
+  rows
+    .sort((a, b) => `${a.record.date}${a.account.id}`.localeCompare(`${b.record.date}${b.account.id}`))
+    .forEach(({ account, record }) => {
+      const computed = calculateRecord(record);
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${escapeHtml(account.id)}</td>
+        <td>${escapeHtml(account.name)}</td>
+        <td>${escapeHtml(record.date)}</td>
+        <td>${leaveLabels[record.type] || record.type}</td>
+        <td>${record.startTime || "-"}</td>
+        <td>${record.endTime || "-"}</td>
+        <td>${formatHours(computed.hours)}</td>
+        <td>${formatLeaveDays(getLeaveDays(record))}</td>
+        <td>${escapeHtml(record.note || "-")}</td>
+      `;
+      els.hrRecordsTable.append(row);
+    });
+}
+
+function exportAllCsv() {
+  if (!isHr()) return;
+
+  const rows = [
+    ["工號", "姓名", "日期", "類型", "上班", "下班", "休息分鐘", "工時", "加班", "薪資", "請假天數", "備註"],
+    ...getAllEmployeeRecords()
+      .filter((item) => item.record.date.startsWith(selectedMonth))
+      .map(({ account, record }) => {
+        const computed = calculateRecord(record);
+        return [
+          account.id,
+          account.name,
+          record.date,
+          leaveLabels[record.type] || record.type,
+          record.startTime,
+          record.endTime,
+          record.breakMinutes,
+          computed.hours,
+          computed.overtime,
+          Math.round(computed.pay),
+          getLeaveDays(record),
+          record.note,
+        ];
+      }),
+  ];
+
+  downloadCsv(rows, `HR彙整紀錄-${selectedMonth}.csv`);
+}
+
+function getAllEmployeeRecords() {
+  return employeeAccounts
+    .filter((account) => account.role === "employee")
+    .flatMap((account) => loadRecordsForEmployee(account.id).map((record) => ({ account, record })));
+}
+
+function downloadCsv(rows, filename) {
   const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
   const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `打卡紀錄-${selectedMonth}.csv`;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -554,8 +678,12 @@ function persistRecords() {
 
 function loadRecords() {
   if (!currentEmployeeId) return [];
+  return loadRecordsForEmployee(currentEmployeeId);
+}
+
+function loadRecordsForEmployee(employeeId) {
   try {
-    return JSON.parse(localStorage.getItem(employeeRecordsKey(currentEmployeeId))) || [];
+    return JSON.parse(localStorage.getItem(employeeRecordsKey(employeeId))) || [];
   } catch {
     return [];
   }
@@ -571,6 +699,19 @@ function loadSettings() {
   } catch {
     return { ...defaultSettings };
   }
+}
+
+function getAccount(employeeId) {
+  return employeeAccounts.find((account) => account.id === employeeId) || {
+    id: employeeId,
+    name: employeeId,
+    password: "",
+    role: "employee",
+  };
+}
+
+function isHr() {
+  return currentAccount?.role === "hr";
 }
 
 function todayKey() {

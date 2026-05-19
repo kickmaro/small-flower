@@ -1,4 +1,4 @@
-const CACHE_NAME = "hong-xiao-hua-clock-v1";
+const CACHE_NAME = "hong-xiao-hua-clock-v2";
 const APP_ASSETS = [
   "./",
   "./index.html",

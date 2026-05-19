@@ -18,6 +18,7 @@
     <section class="login-screen" aria-label="登入">
       <form class="login-card" id="loginForm">
         <h1>洪小花打卡系統</h1>
+        <p class="login-subtitle">打卡、請假、薪資與 HR 後台</p>
         <label>
           工號
           <input id="employeeId" type="text" autocomplete="username" required />
@@ -28,6 +29,7 @@
         </label>
         <p class="login-error" id="loginError" aria-live="polite"></p>
         <button class="primary-button form-submit" type="submit">登入</button>
+        <p class="login-hint">員工：A001 / 1234　HR：HR001 / hr1234</p>
       </form>
     </section>
 
@@ -45,10 +47,12 @@
           <button class="nav-tab" type="button" data-tab="records">紀錄</button>
           <button class="nav-tab" type="button" data-tab="salary">薪資</button>
           <button class="nav-tab" type="button" data-tab="leave">請假</button>
+          <button class="nav-tab hr-only" type="button" data-tab="hr">HR</button>
         </nav>
         <div class="employee-panel">
-          <span>目前工號</span>
+          <span>目前登入</span>
           <strong id="currentEmployee">-</strong>
+          <small id="currentRole">-</small>
           <button class="secondary-button" id="logoutBtn" type="button">登出</button>
           <button class="secondary-button install-button" id="installBtn" type="button" hidden>安裝 App</button>
         </div>
@@ -281,6 +285,84 @@
               </table>
             </div>
             <p class="empty-state" id="emptyLeave">本月尚無請假紀錄</p>
+          </section>
+        </section>
+
+        <section class="view" id="hrView" data-view="hr">
+          <div class="section-header">
+            <div>
+              <span class="eyebrow">HR Console</span>
+              <h2>HR 後台</h2>
+            </div>
+            <button class="secondary-button" id="exportAllCsvBtn" type="button">匯出全部 CSV</button>
+          </div>
+
+          <div class="notice-panel">
+            <strong>目前是純前端 PWA</strong>
+            <p>HR 後台只能讀取「同一台裝置、同一個瀏覽器」裡的資料。若員工各自在手機上打卡，HR 要集中取得紀錄，需要接資料庫後端，例如 Firebase、Supabase 或公司伺服器 API。</p>
+          </div>
+
+          <div class="metric-grid">
+            <article class="metric">
+              <span>員工數</span>
+              <strong id="hrEmployeeCount">0</strong>
+            </article>
+            <article class="metric">
+              <span>本月紀錄</span>
+              <strong id="hrRecordCount">0</strong>
+            </article>
+            <article class="metric">
+              <span>本月請假</span>
+              <strong id="hrLeaveCount">0</strong>
+            </article>
+            <article class="metric">
+              <span>本月工時</span>
+              <strong id="hrHourCount">0</strong>
+            </article>
+          </div>
+
+          <section class="leave-history">
+            <div class="section-header compact">
+              <h2>員工帳號設定</h2>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>工號</th>
+                    <th>姓名</th>
+                    <th>角色</th>
+                    <th>密碼</th>
+                  </tr>
+                </thead>
+                <tbody id="accountTable"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="leave-history">
+            <div class="section-header compact">
+              <h2>本機彙整紀錄</h2>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>工號</th>
+                    <th>姓名</th>
+                    <th>日期</th>
+                    <th>類型</th>
+                    <th>上班</th>
+                    <th>下班</th>
+                    <th>工時</th>
+                    <th>請假天數</th>
+                    <th>備註</th>
+                  </tr>
+                </thead>
+                <tbody id="hrRecordsTable"></tbody>
+              </table>
+            </div>
+            <p class="empty-state" id="emptyHrRecords">本月尚無可彙整紀錄</p>
           </section>
         </section>
       </main>
