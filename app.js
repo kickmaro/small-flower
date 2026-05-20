@@ -1,14 +1,25 @@
 const CONFIG = window.HH_CLOCK_CONFIG || {};
 const AUTH_EMAIL_DOMAIN = CONFIG.authEmailDomain || "hong-xiao-hua.local";
+const DEMO_AUTH_KEY = "hh-clock-demo-current-user-v1";
+const DEMO_ACCOUNTS_KEY = "hh-clock-demo-accounts-v1";
+const DEMO_RECORDS_KEY = "hh-clock-demo-records-v1";
+const DEMO_WORKSITE_KEY = "hh-clock-demo-worksite-v1";
 
 let deferredInstallPrompt = null;
 let supabaseClient = null;
+let isDemoMode = false;
 let currentProfile = null;
 let records = [];
 let hrRows = [];
 let employeeProfiles = [];
 let worksite = {};
 let selectedMonth = monthKey(new Date());
+
+const defaultDemoAccounts = [
+  { id: "A001", employee_id: "A001", full_name: "洪小花", role: "employee", password: "1234", is_active: true },
+  { id: "A002", employee_id: "A002", full_name: "林小明", role: "employee", password: "2222", is_active: true },
+  { id: "HR0001", employee_id: "HR0001", full_name: "HR 管理員", role: "hr", password: "hr1234", is_active: true },
+];
 
 const leaveLabels = {
   work: "上班",
@@ -94,7 +105,16 @@ async function init() {
   tickClock();
 
   if (!configureBackend()) {
-    showLogin("後端尚未設定，請先設定 config.js 的 Supabase URL 與 anon key");
+    isDemoMode = true;
+    const demoUserId = sessionStorage.getItem(DEMO_AUTH_KEY);
+    if (demoUserId) {
+      const account = getDemoAccounts().find((item) => item.employee_id === demoUserId && item.is_active);
+      if (account) {
+        await loginDemoAccount(account);
+        return;
+      }
+    }
+    showLogin("試用模式：員工 A001 / 1234，HR HR0001 / hr1234");
     return;
   }
 
@@ -147,7 +167,7 @@ function bindEvents() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw-v13.js").catch(() => {});
+    navigator.serviceWorker.register("./sw-v14.js").catch(() => {});
   });
 }
 
@@ -171,13 +191,24 @@ async function installApp() {
 
 async function handleLogin(event) {
   event.preventDefault();
+  const employeeId = normalizeEmployeeId(els.employeeId.value);
+  const password = els.employeePassword.value.trim();
+
+  if (isDemoMode) {
+    const account = getDemoAccounts().find((item) => item.employee_id === employeeId && item.password === password && item.is_active);
+    if (!account) {
+      showLogin("試用模式工號或密碼不正確");
+      return;
+    }
+    await loginDemoAccount(account);
+    return;
+  }
+
   if (!supabaseClient) {
     showLogin("後端尚未設定，無法登入");
     return;
   }
 
-  const employeeId = normalizeEmployeeId(els.employeeId.value);
-  const password = els.employeePassword.value.trim();
   if (!employeeId || !password) {
     showLogin("請輸入工號與密碼");
     return;
@@ -198,6 +229,18 @@ async function handleLogin(event) {
   els.loginError.textContent = "";
   els.employeePassword.value = "";
   await loadAuthenticatedUser();
+}
+
+async function loginDemoAccount(account) {
+  currentProfile = { ...account };
+  sessionStorage.setItem(DEMO_AUTH_KEY, currentProfile.employee_id);
+  document.body.classList.toggle("is-hr", isHr());
+  document.body.classList.add("is-authenticated");
+  els.currentEmployee.textContent = `${currentProfile.full_name} (${currentProfile.employee_id})`;
+  els.currentRole.textContent = isHr() ? "HR 後台權限｜試用模式" : "員工｜試用模式";
+  els.loginError.textContent = "";
+  els.employeePassword.value = "";
+  await updateMonth(selectedMonth);
 }
 
 async function loadAuthenticatedUser() {
@@ -229,7 +272,11 @@ async function loadAuthenticatedUser() {
 }
 
 async function logoutEmployee() {
-  if (supabaseClient) await supabaseClient.auth.signOut();
+  if (isDemoMode) {
+    sessionStorage.removeItem(DEMO_AUTH_KEY);
+  } else if (supabaseClient) {
+    await supabaseClient.auth.signOut();
+  }
   currentProfile = null;
   records = [];
   hrRows = [];
@@ -265,6 +312,29 @@ function switchTab(tab) {
 
 async function loadMonthData() {
   if (!currentProfile) return;
+
+  if (isDemoMode) {
+    const [startDate, endDate] = monthBounds(selectedMonth);
+    const allAccounts = getDemoAccounts();
+    const allRecords = getAllDemoRecords();
+    records = (allRecords[currentProfile.employee_id] || [])
+      .filter((record) => record.date >= startDate && record.date <= endDate)
+      .sort(sortRecords);
+    worksite = loadDemoWorksite();
+
+    if (isHr()) {
+      employeeProfiles = allAccounts.map(({ password, ...profile }) => profile);
+      hrRows = allAccounts.flatMap((account) =>
+        (allRecords[account.employee_id] || [])
+          .filter((record) => record.date >= startDate && record.date <= endDate)
+          .map((record) => ({
+            account: { id: account.employee_id, name: account.full_name, role: account.role },
+            record,
+          })),
+      );
+    }
+    return;
+  }
 
   const [startDate, endDate] = monthBounds(selectedMonth);
   const { data: ownRows, error: ownError } = await supabaseClient
@@ -345,6 +415,26 @@ async function stampTime(direction) {
   const date = todayKey();
   const time = new Date().toTimeString().slice(0, 5);
   const existing = records.find((item) => item.date === date && item.type === "work");
+
+  if (isDemoMode) {
+    const record = existing || createDemoRecord({ date, type: "work" });
+    if (direction === "in") {
+      record.startTime = time;
+      record.clockInLocation = locationCheck.location;
+    } else {
+      record.endTime = time;
+      if (!record.startTime) record.startTime = time;
+      record.clockOutLocation = locationCheck.location;
+    }
+    upsertDemoRecord(currentProfile.employee_id, record);
+    records = [...records.filter((item) => item.id !== record.id), record].sort(sortRecords);
+    els.locationStatus.textContent = `${direction === "in" ? "上班" : "下班"}打卡成功，距離打卡點 ${formatMeters(locationCheck.location.distanceMeters)}`;
+    renderLocationMap(locationCheck.location, direction === "in" ? "上班打卡" : "下班打卡");
+    selectedMonth = date.slice(0, 7);
+    await updateMonth(selectedMonth);
+    return;
+  }
+
   const payload = {
     id: existing?.id,
     user_id: currentProfile.id,
@@ -392,6 +482,25 @@ async function saveLeaveRequest(event) {
     note: buildLeaveNote(leavePeriod, els.leaveReason.value.trim()),
   }));
 
+  if (isDemoMode) {
+    rows.forEach((row) => {
+      upsertDemoRecord(currentProfile.employee_id, createDemoRecord({
+        id: `leave-${Date.now()}-${row.record_date}-${row.record_type}`,
+        date: row.record_date,
+        type: row.record_type,
+        leaveDays: row.leave_days,
+        leavePeriod: row.leave_period,
+        note: row.note,
+      }));
+    });
+    selectedMonth = startDate.slice(0, 7);
+    await updateMonth(selectedMonth);
+    els.leaveForm.reset();
+    els.leaveStartDate.value = todayKey();
+    els.leaveEndDate.value = todayKey();
+    return;
+  }
+
   const { error } = await supabaseClient.from("attendance_records").insert(rows);
   if (error) {
     alert(`請假送出失敗：${error.message}`);
@@ -411,6 +520,14 @@ async function saveWorksiteSettings(event) {
 
   const nextWorksite = parseWorksiteForm();
   if (!nextWorksite) return;
+
+  if (isDemoMode) {
+    worksite = nextWorksite;
+    localStorage.setItem(DEMO_WORKSITE_KEY, JSON.stringify(worksite));
+    hydrateWorksite();
+    els.locationStatus.textContent = "試用模式打卡範圍已更新";
+    return;
+  }
 
   const { data, error } = await supabaseClient
     .from("worksite_settings")
@@ -593,6 +710,12 @@ function renderRecords(monthRecords) {
 
   els.recordsTable.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", async () => {
+      if (isDemoMode) {
+        deleteDemoRecord(currentProfile.employee_id, button.dataset.delete);
+        records = records.filter((record) => record.id !== button.dataset.delete);
+        render();
+        return;
+      }
       const { error } = await supabaseClient.from("attendance_records").delete().eq("id", button.dataset.delete);
       if (error) {
         alert(`刪除失敗：${error.message}`);
@@ -679,6 +802,12 @@ function renderLeaveTable(leaveRecords) {
   });
   els.leaveTable.querySelectorAll("[data-delete]").forEach((button) => {
     button.addEventListener("click", async () => {
+      if (isDemoMode) {
+        deleteDemoRecord(currentProfile.employee_id, button.dataset.delete);
+        records = records.filter((record) => record.id !== button.dataset.delete);
+        render();
+        return;
+      }
       const { error } = await supabaseClient.from("attendance_records").delete().eq("id", button.dataset.delete);
       if (error) {
         alert(`刪除失敗：${error.message}`);
@@ -746,6 +875,14 @@ async function saveEmployeeAccount(event) {
 
   if (!employeeProfiles.some((profile) => profile.employee_id === employeeId) && payload.password.length < 8) {
     els.employeeAdminStatus.textContent = "新增員工需要至少 8 碼初始密碼";
+    return;
+  }
+
+  if (isDemoMode) {
+    upsertDemoAccount(payload);
+    els.employeeAdminStatus.textContent = `${employeeId} 已儲存（試用模式）`;
+    els.employeeAdminForm.reset();
+    await updateMonth(selectedMonth);
     return;
   }
 
@@ -843,12 +980,93 @@ function recordFromRow(row) {
   };
 }
 
+function createDemoRecord(input) {
+  return {
+    id: input.id || `${input.date}-${input.type}`,
+    date: input.date,
+    type: input.type || "work",
+    startTime: input.startTime || "",
+    endTime: input.endTime || "",
+    breakMinutes: Number(input.breakMinutes) || 0,
+    leaveDays: Number(input.leaveDays) || 0,
+    leavePeriod: input.leavePeriod || "",
+    note: input.note || "",
+    clockInLocation: input.clockInLocation || null,
+    clockOutLocation: input.clockOutLocation || null,
+  };
+}
+
 function worksiteFromRow(row) {
   return {
     latitude: Number(row.latitude),
     longitude: Number(row.longitude),
     radiusMeters: Number(row.radius_meters),
   };
+}
+
+function getDemoAccounts() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(DEMO_ACCOUNTS_KEY));
+    return Array.isArray(stored) && stored.length ? stored : [...defaultDemoAccounts];
+  } catch {
+    return [...defaultDemoAccounts];
+  }
+}
+
+function saveDemoAccounts(accounts) {
+  localStorage.setItem(DEMO_ACCOUNTS_KEY, JSON.stringify(accounts));
+}
+
+function upsertDemoAccount(payload) {
+  const accounts = getDemoAccounts();
+  const index = accounts.findIndex((account) => account.employee_id === payload.employeeId);
+  const nextAccount = {
+    id: payload.employeeId,
+    employee_id: payload.employeeId,
+    full_name: payload.fullName,
+    role: payload.role,
+    password: payload.password || accounts[index]?.password || "12345678",
+    is_active: payload.isActive,
+  };
+  if (index >= 0) {
+    accounts[index] = nextAccount;
+  } else {
+    accounts.push(nextAccount);
+  }
+  saveDemoAccounts(accounts);
+}
+
+function getAllDemoRecords() {
+  try {
+    return JSON.parse(localStorage.getItem(DEMO_RECORDS_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveAllDemoRecords(allRecords) {
+  localStorage.setItem(DEMO_RECORDS_KEY, JSON.stringify(allRecords));
+}
+
+function upsertDemoRecord(employeeId, record) {
+  const allRecords = getAllDemoRecords();
+  const rows = allRecords[employeeId] || [];
+  allRecords[employeeId] = [...rows.filter((item) => item.id !== record.id), record].sort(sortRecords);
+  saveAllDemoRecords(allRecords);
+}
+
+function deleteDemoRecord(employeeId, recordId) {
+  const allRecords = getAllDemoRecords();
+  allRecords[employeeId] = (allRecords[employeeId] || []).filter((record) => record.id !== recordId);
+  saveAllDemoRecords(allRecords);
+}
+
+function loadDemoWorksite() {
+  try {
+    return JSON.parse(localStorage.getItem(DEMO_WORKSITE_KEY)) || {};
+  } catch {
+    return {};
+  }
 }
 
 function locationPayload(direction, location) {

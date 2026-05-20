@@ -1,6 +1,8 @@
 # 洪小花打卡系統
 
-正式版 PWA 打卡系統。前端可部署在 GitHub Pages / Cloudflare Pages / Firebase Hosting，登入、員工資料、打卡、請假、HR 查詢與打卡範圍設定改由 Supabase 後端儲存。
+正式版 PWA 打卡系統。前端可部署在 GitHub Pages / Cloudflare Pages / Firebase Hosting，登入、員工資料、打卡、請假、HR 查詢與打卡範圍設定可由 Supabase 後端儲存。
+
+目前若 `config.js` 尚未填入 Supabase URL 與 anon key，系統會自動進入試用模式，方便先給對方打開網頁體驗。
 
 ## 正式版架構
 
@@ -20,6 +22,20 @@
 - 請假申請與假別統計
 - HR 後台建立/更新員工帳號、查詢全員紀錄、匯出 CSV
 - HR 設定公司打卡中心點與允許半徑
+
+## 試用模式
+
+不設定 Supabase 也可以直接打開網頁試用：
+
+```text
+員工：A001 / 1234
+員工：A002 / 2222
+HR：HR0001 / hr1234
+```
+
+試用模式資料會暫存在同一台裝置的瀏覽器 `localStorage`，包含員工帳號、打卡紀錄、請假紀錄與打卡範圍。換裝置、換瀏覽器或清除瀏覽資料後，資料不會同步或保留。
+
+正式給公司多人使用時，請完成下方 Supabase 設定，系統會自動切換成正式資料庫模式。
 
 ## 本機開啟
 
