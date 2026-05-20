@@ -1,11 +1,27 @@
 # 洪小花打卡系統
 
-一個不需安裝套件的靜態打卡 App，可記錄上下班時間、檢查定位範圍、統計假別，並匯出打卡紀錄 CSV。
-此版本支援 PWA，可加入手機主畫面，以近似 App 的方式開啟。
+正式版 PWA 打卡系統。前端可部署在 GitHub Pages / Cloudflare Pages / Firebase Hosting，登入、員工資料、打卡、請假、HR 查詢與打卡範圍設定改由 Supabase 後端儲存。
 
-## 使用方式
+## 正式版架構
 
-直接用瀏覽器開啟 `index.html`，或在此資料夾啟動本機伺服器：
+```text
+員工手機 PWA
+  -> Supabase Auth 驗證工號密碼
+  -> Supabase Postgres 儲存打卡、請假、定位與 HR 設定
+  -> Row Level Security 控制員工只能看自己的資料，HR 可看全公司資料
+```
+
+## 功能
+
+- 工號密碼登入，前端不再保存密碼清單
+- 上班打卡與下班打卡
+- 定位打卡範圍限制
+- 打卡成功後直接顯示 Google 地圖打卡位置
+- 請假申請與假別統計
+- HR 後台查詢全員紀錄、匯出 CSV
+- HR 設定公司打卡中心點與允許半徑
+
+## 本機開啟
 
 ```bash
 python3 -m http.server 4173
@@ -17,46 +33,37 @@ python3 -m http.server 4173
 http://127.0.0.1:4173/index.html
 ```
 
-## 功能
+## Supabase 設定
 
-- 登入畫面，可輸入工號與密碼
-- 員工帳密表與 HR 後台入口
-- PWA App 樣式，支援加入主畫面與基本離線快取
-- 上班打卡與下班打卡
-- 定位打卡範圍限制，員工需在 HR 設定半徑內才能打卡
-- 打卡成功後直接顯示 Google 地圖打卡位置
-- 請假申請，可選假別、日期區間、全天或半天與原因
-- 自動計算上下班工時
-- 每月假別統計
-- 匯出 CSV 與列印打卡紀錄
-
-## 預設帳號
-
-- 員工：`A001` / `1234`
-- 員工：`A002` / `2222`
-- HR：`HR0001` / `hr1234`
-- HR 備用：`HR001` / `hr1234`
-
-帳號設定在 `app.js` 的 `employeeAccounts` 清單中。此版本為純前端 PWA，帳密只適合展示或小範圍試用。
-
-## HR 後台與資料集中
-
-目前 HR 後台只能讀取同一台裝置、同一個瀏覽器中的員工資料。若員工各自在手機上打卡，資料會存在各自手機的瀏覽器，HR 不會自動收到。
-
-若要讓 HR 集中取得所有打卡與請假紀錄，需要接資料庫後端，例如 Firebase、Supabase 或公司內部 API。資料流程會變成：
+1. 建立 Supabase 專案。
+2. 到 SQL Editor 執行 `supabase/schema.sql`。
+3. 到 Authentication 建立使用者。
+   - 工號 `A001` 對應 email：`a001@hong-xiao-hua.local`
+   - HR `HR0001` 對應 email：`hr0001@hong-xiao-hua.local`
+4. 到 Table Editor 的 `profiles` 建立對應資料：
 
 ```text
-員工手機打卡 -> HTTPS API / 資料庫 -> HR 後台查詢與匯出
+id = auth.users 的 user id
+employee_id = A001
+full_name = 洪小花
+role = employee 或 hr
+is_active = true
 ```
 
-## 定位打卡
+5. 到 Supabase Project Settings > API 複製 Project URL 與 anon/publishable key，填入 `config.js`：
 
-HR 登入後可在 HR 後台設定打卡中心點與允許半徑，也可以按「用目前位置設定」直接把目前 GPS 位置設為中心點。員工按上班或下班打卡時，系統會要求瀏覽器定位授權，並檢查距離是否在允許半徑內。
+```js
+window.HH_CLOCK_CONFIG = {
+  supabaseUrl: "https://your-project.supabase.co",
+  supabaseAnonKey: "你的 anon 或 publishable key",
+  authEmailDomain: "hong-xiao-hua.local",
+};
+```
 
-打卡成功後，打卡頁會直接嵌入 Google 地圖顯示本次打卡位置，並保留外部地圖連結。
+`supabaseAnonKey` 可以放在前端，但必須搭配 `supabase/schema.sql` 的 RLS 規則。不要把 service role key 放進前端。
 
-定位功能需要使用 `https://` 網址或本機 `localhost`，一般手機瀏覽器會跳出定位授權。此純前端版本的打卡範圍設定仍存在各自瀏覽器；若要讓所有員工手機共用同一個 HR 設定，需接後端資料庫同步。
+## 商用注意
 
-## 資料儲存
-
-資料會依工號存在瀏覽器的 `localStorage`。同一台電腦、同一個瀏覽器開啟時會保留紀錄。此版本為純前端暫時網頁，密碼不會上傳或儲存，僅檢查是否有輸入。
+- 打卡定位屬於員工個資，正式使用前應提供隱私告知、用途、保存期限與查閱權限說明。
+- Google 地圖嵌入會把打卡座標傳給 Google Maps 以載入地圖。
+- 若要讓 HR 在系統內直接新增/停用員工帳號，建議再加 Supabase Edge Function，由後端使用 service role 建立 Auth 使用者，前端不可保存 service role key。

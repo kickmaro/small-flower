@@ -2,3 +2,4 @@
 temp-*.log
 temp-*.pid
 .DS_Store
+config.local.js

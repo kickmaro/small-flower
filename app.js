@@ -1,15 +1,14 @@
-const STORAGE_KEY = "clock-payroll-records-v1";
-const AUTH_KEY = "clock-payroll-current-employee-v1";
-const WORKSITE_KEY = "clock-payroll-worksite-v1";
+const CONFIG = window.HH_CLOCK_CONFIG || {};
+const AUTH_EMAIL_DOMAIN = CONFIG.authEmailDomain || "hong-xiao-hua.local";
 
 let deferredInstallPrompt = null;
-
-const employeeAccounts = [
-  { id: "A001", name: "洪小花", password: "1234", role: "employee" },
-  { id: "A002", name: "林小明", password: "2222", role: "employee" },
-  { id: "HR0001", name: "HR 管理員", password: "hr1234", role: "hr" },
-  { id: "HR001", name: "HR 管理員", password: "hr1234", role: "hr" },
-];
+let supabaseClient = null;
+let currentProfile = null;
+let records = [];
+let hrRows = [];
+let employeeProfiles = [];
+let worksite = {};
+let selectedMonth = monthKey(new Date());
 
 const leaveLabels = {
   work: "上班",
@@ -21,12 +20,6 @@ const leaveLabels = {
 };
 
 const leaveTypes = ["annual", "sick", "personal", "official", "unpaid"];
-
-let currentEmployeeId = sessionStorage.getItem(AUTH_KEY) || "";
-let currentAccount = null;
-let records = [];
-let worksite = loadWorksite();
-let selectedMonth = monthKey(new Date());
 
 const els = {
   loginForm: document.querySelector("#loginForm"),
@@ -85,18 +78,37 @@ const els = {
 
 init();
 
-function init() {
+async function init() {
   registerServiceWorker();
-  hydrateWorksite();
   bindEvents();
   setInterval(tickClock, 1000);
   els.leaveStartDate.value = todayKey();
   els.leaveEndDate.value = todayKey();
-  if (currentEmployeeId) {
-    loginEmployee(currentEmployeeId);
+  tickClock();
+
+  if (!configureBackend()) {
+    showLogin("後端尚未設定，請先設定 config.js 的 Supabase URL 與 anon key");
+    return;
+  }
+
+  const { data } = await supabaseClient.auth.getSession();
+  if (data.session) {
+    await loadAuthenticatedUser();
   } else {
     showLogin();
   }
+}
+
+function configureBackend() {
+  if (!CONFIG.supabaseUrl || !CONFIG.supabaseAnonKey || !window.supabase?.createClient) return false;
+  supabaseClient = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+    },
+  });
+  return true;
 }
 
 function bindEvents() {
@@ -127,7 +139,7 @@ function bindEvents() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw-v11.js").catch(() => {});
+    navigator.serviceWorker.register("./sw-v12.js").catch(() => {});
   });
 }
 
@@ -149,57 +161,88 @@ async function installApp() {
   hideInstallButton();
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
   event.preventDefault();
-  const employeeId = els.employeeId.value.trim();
-  const password = els.employeePassword.value.trim();
-
-  if (!employeeId || !password) {
-    els.loginError.textContent = "請輸入工號與密碼";
+  if (!supabaseClient) {
+    showLogin("後端尚未設定，無法登入");
     return;
   }
 
-  const account = employeeAccounts.find((item) => item.id === employeeId && item.password === password);
-  if (!account) {
-    els.loginError.textContent = "工號或密碼不正確";
+  const employeeId = normalizeEmployeeId(els.employeeId.value);
+  const password = els.employeePassword.value.trim();
+  if (!employeeId || !password) {
+    showLogin("請輸入工號與密碼");
+    return;
+  }
+
+  setLoginBusy(true);
+  const { error } = await supabaseClient.auth.signInWithPassword({
+    email: employeeIdToEmail(employeeId),
+    password,
+  });
+  setLoginBusy(false);
+
+  if (error) {
+    showLogin("工號或密碼不正確，或帳號尚未啟用");
     return;
   }
 
   els.loginError.textContent = "";
   els.employeePassword.value = "";
-  loginEmployee(account.id);
+  await loadAuthenticatedUser();
 }
 
-function loginEmployee(employeeId) {
-  currentEmployeeId = employeeId;
-  currentAccount = getAccount(employeeId);
-  sessionStorage.setItem(AUTH_KEY, currentEmployeeId);
-  records = loadRecords();
-  els.currentEmployee.textContent = `${currentAccount.name} (${currentAccount.id})`;
-  els.currentRole.textContent = currentAccount.role === "hr" ? "HR 後台權限" : "員工";
-  document.body.classList.toggle("is-hr", currentAccount.role === "hr");
+async function loadAuthenticatedUser() {
+  const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+  if (userError || !userData.user) {
+    showLogin();
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .select("*")
+    .eq("id", userData.user.id)
+    .eq("is_active", true)
+    .single();
+
+  if (error || !data) {
+    await supabaseClient.auth.signOut();
+    showLogin("找不到啟用中的員工資料，請聯絡 HR");
+    return;
+  }
+
+  currentProfile = data;
+  document.body.classList.toggle("is-hr", isHr());
   document.body.classList.add("is-authenticated");
-  updateMonth(selectedMonth);
+  els.currentEmployee.textContent = `${currentProfile.full_name} (${currentProfile.employee_id})`;
+  els.currentRole.textContent = isHr() ? "HR 後台權限" : "員工";
+  await updateMonth(selectedMonth);
 }
 
-function logoutEmployee() {
-  sessionStorage.removeItem(AUTH_KEY);
-  currentEmployeeId = "";
-  currentAccount = null;
+async function logoutEmployee() {
+  if (supabaseClient) await supabaseClient.auth.signOut();
+  currentProfile = null;
   records = [];
+  hrRows = [];
+  employeeProfiles = [];
   els.currentEmployee.textContent = "-";
   els.currentRole.textContent = "-";
-  document.body.classList.remove("is-hr");
-  document.body.classList.remove("is-authenticated");
+  document.body.classList.remove("is-hr", "is-authenticated");
   els.employeeId.value = "";
   els.employeePassword.value = "";
   showLogin();
 }
 
-function showLogin() {
+function showLogin(message = "") {
   document.body.classList.remove("is-authenticated");
-  els.loginError.textContent = "";
+  els.loginError.textContent = message;
   els.employeeId.focus();
+}
+
+function setLoginBusy(isBusy) {
+  els.loginForm.querySelector("button[type='submit']").disabled = isBusy;
+  els.loginError.textContent = isBusy ? "登入中..." : "";
 }
 
 function switchTab(tab) {
@@ -210,6 +253,50 @@ function switchTab(tab) {
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.toggle("is-active", view.dataset.view === tab);
   });
+}
+
+async function loadMonthData() {
+  if (!currentProfile) return;
+
+  const [startDate, endDate] = monthBounds(selectedMonth);
+  const { data: ownRows, error: ownError } = await supabaseClient
+    .from("attendance_records")
+    .select("*")
+    .eq("user_id", currentProfile.id)
+    .gte("record_date", startDate)
+    .lte("record_date", endDate)
+    .order("record_date", { ascending: true });
+  if (ownError) throw ownError;
+  records = (ownRows || []).map(recordFromRow);
+
+  const { data: siteRows, error: siteError } = await supabaseClient.from("worksite_settings").select("*").eq("id", 1).maybeSingle();
+  if (siteError) throw siteError;
+  worksite = siteRows ? worksiteFromRow(siteRows) : {};
+
+  if (isHr()) {
+    const { data: profiles, error: profileError } = await supabaseClient
+      .from("profiles")
+      .select("*")
+      .order("employee_id", { ascending: true });
+    if (profileError) throw profileError;
+    employeeProfiles = profiles || [];
+
+    const { data: rows, error: rowsError } = await supabaseClient
+      .from("attendance_records")
+      .select("*, profiles(employee_id, full_name, role)")
+      .gte("record_date", startDate)
+      .lte("record_date", endDate)
+      .order("record_date", { ascending: true });
+    if (rowsError) throw rowsError;
+    hrRows = (rows || []).map((row) => ({
+      account: {
+        id: row.profiles?.employee_id || "-",
+        name: row.profiles?.full_name || "-",
+        role: row.profiles?.role || "employee",
+      },
+      record: recordFromRow(row),
+    }));
+  }
 }
 
 function hydrateWorksite() {
@@ -247,52 +334,39 @@ async function stampTime(direction) {
     return;
   }
 
-  const now = new Date();
   const date = todayKey();
-  const time = now.toTimeString().slice(0, 5);
-  let record = records.find((item) => item.date === date && item.type === "work");
+  const time = new Date().toTimeString().slice(0, 5);
+  const existing = records.find((item) => item.date === date && item.type === "work");
+  const payload = {
+    id: existing?.id,
+    user_id: currentProfile.id,
+    record_date: date,
+    record_type: "work",
+    start_time: direction === "in" ? time : existing?.startTime || time,
+    end_time: direction === "out" ? time : existing?.endTime || null,
+    ...locationPayload(direction, locationCheck.location),
+  };
 
-  if (!record) {
-    record = createRecord({ date, type: "work" });
-    records.push(record);
+  const { data, error } = await supabaseClient
+    .from("attendance_records")
+    .upsert(payload, { onConflict: "user_id,record_date,record_type" })
+    .select()
+    .single();
+  if (error) {
+    alert(`打卡失敗：${error.message}`);
+    return;
   }
 
-  if (direction === "in") {
-    record.startTime = time;
-    record.clockInLocation = locationCheck.location;
-  } else {
-    record.endTime = time;
-    if (!record.startTime) record.startTime = time;
-    record.clockOutLocation = locationCheck.location;
-  }
-
+  const record = recordFromRow(data);
+  records = [...records.filter((item) => item.id !== record.id), record].sort(sortRecords);
   els.locationStatus.textContent = `${direction === "in" ? "上班" : "下班"}打卡成功，距離打卡點 ${formatMeters(locationCheck.location.distanceMeters)}`;
   renderLocationMap(locationCheck.location, direction === "in" ? "上班打卡" : "下班打卡");
-
-  persistRecords();
   selectedMonth = date.slice(0, 7);
-  updateMonth(selectedMonth);
+  await updateMonth(selectedMonth);
 }
 
-function createRecord(input) {
-  return {
-    id: input.id || `${input.date}-${input.type}`,
-    date: input.date,
-    type: input.type || "work",
-    startTime: input.startTime || "",
-    endTime: input.endTime || "",
-    breakMinutes: Number(input.breakMinutes) || 0,
-    clockInLocation: input.clockInLocation || null,
-    clockOutLocation: input.clockOutLocation || null,
-    leaveDays: Number(input.leaveDays) || 0,
-    leavePeriod: input.leavePeriod || "",
-    note: input.note || "",
-  };
-}
-
-function saveLeaveRequest(event) {
+async function saveLeaveRequest(event) {
   event.preventDefault();
-
   const startDate = els.leaveStartDate.value;
   const endDate = els.leaveEndDate.value;
   if (!startDate || !endDate || endDate < startDate) {
@@ -301,40 +375,59 @@ function saveLeaveRequest(event) {
   }
 
   const [leaveDays, leavePeriod] = parseLeaveDuration(els.leaveDuration.value);
-  const requestId = Date.now();
-  const newRecords = datesBetween(startDate, endDate).map((date, index) =>
-    createRecord({
-      id: `leave-${requestId}-${index}`,
-      date,
-      type: els.leaveType.value,
-      leaveDays,
-      leavePeriod,
-      note: buildLeaveNote(leavePeriod, els.leaveReason.value.trim()),
-    }),
-  );
+  const rows = datesBetween(startDate, endDate).map((date) => ({
+    user_id: currentProfile.id,
+    record_date: date,
+    record_type: els.leaveType.value,
+    leave_days: leaveDays,
+    leave_period: leavePeriod,
+    note: buildLeaveNote(leavePeriod, els.leaveReason.value.trim()),
+  }));
 
-  records.push(...newRecords);
-  persistRecords();
+  const { error } = await supabaseClient.from("attendance_records").insert(rows);
+  if (error) {
+    alert(`請假送出失敗：${error.message}`);
+    return;
+  }
+
   selectedMonth = startDate.slice(0, 7);
-  updateMonth(selectedMonth);
+  await updateMonth(selectedMonth);
   els.leaveForm.reset();
   els.leaveStartDate.value = todayKey();
   els.leaveEndDate.value = todayKey();
 }
 
-function saveWorksiteSettings(event) {
+async function saveWorksiteSettings(event) {
   event.preventDefault();
+  if (!isHr()) return;
 
   const nextWorksite = parseWorksiteForm();
   if (!nextWorksite) return;
 
-  worksite = nextWorksite;
-  localStorage.setItem(WORKSITE_KEY, JSON.stringify(worksite));
-  renderWorksiteStatus();
+  const { data, error } = await supabaseClient
+    .from("worksite_settings")
+    .upsert({
+      id: 1,
+      latitude: nextWorksite.latitude,
+      longitude: nextWorksite.longitude,
+      radius_meters: nextWorksite.radiusMeters,
+      updated_by: currentProfile.id,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    alert(`儲存打卡範圍失敗：${error.message}`);
+    return;
+  }
+
+  worksite = worksiteFromRow(data);
+  hydrateWorksite();
   els.locationStatus.textContent = "打卡範圍已更新，下次打卡會檢查定位";
 }
 
 async function setWorksiteFromCurrentLocation() {
+  if (!isHr()) return;
   els.worksiteStatus.textContent = "正在讀取目前位置...";
   els.useCurrentLocationBtn.disabled = true;
 
@@ -343,13 +436,7 @@ async function setWorksiteFromCurrentLocation() {
     els.worksiteLat.value = position.coords.latitude.toFixed(6);
     els.worksiteLng.value = position.coords.longitude.toFixed(6);
     if (!els.worksiteRadius.value) els.worksiteRadius.value = "150";
-
-    const nextWorksite = parseWorksiteForm();
-    if (!nextWorksite) return;
-
-    worksite = nextWorksite;
-    localStorage.setItem(WORKSITE_KEY, JSON.stringify(worksite));
-    renderWorksiteStatus();
+    await saveWorksiteSettings(new Event("submit"));
   } catch (error) {
     els.worksiteStatus.textContent = geolocationErrorMessage(error);
   } finally {
@@ -366,23 +453,15 @@ function parseWorksiteForm() {
     alert("請輸入有效的中心緯度");
     return null;
   }
-
   if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
     alert("請輸入有效的中心經度");
     return null;
   }
-
   if (!Number.isFinite(radiusMeters) || radiusMeters < 20) {
     alert("允許半徑至少需要 20 公尺");
     return null;
   }
-
-  return {
-    latitude,
-    longitude,
-    radiusMeters,
-    updatedAt: new Date().toISOString(),
-  };
+  return { latitude, longitude, radiusMeters };
 }
 
 function renderWorksiteStatus() {
@@ -391,24 +470,17 @@ function renderWorksiteStatus() {
     els.locationStatus.textContent = `打卡需在半徑 ${Math.round(worksite.radiusMeters)} 公尺內`;
     return;
   }
-
   els.worksiteStatus.textContent = "尚未設定範圍，員工暫時不能打卡";
   els.locationStatus.textContent = "HR 尚未設定打卡範圍";
 }
 
 async function validateClockLocation() {
-  if (!hasWorksite()) {
-    return { ok: false, message: "尚未設定打卡範圍，請 HR 先設定中心點與半徑" };
-  }
-
-  if (!("geolocation" in navigator)) {
-    return { ok: false, message: "此裝置不支援定位，無法打卡" };
-  }
+  if (!hasWorksite()) return { ok: false, message: "尚未設定打卡範圍，請 HR 先設定中心點與半徑" };
+  if (!("geolocation" in navigator)) return { ok: false, message: "此裝置不支援定位，無法打卡" };
 
   els.locationStatus.textContent = "正在檢查定位...";
   els.clockInBtn.disabled = true;
   els.clockOutBtn.disabled = true;
-
   try {
     const position = await getCurrentPosition();
     const distanceMeters = distanceBetweenMeters(
@@ -424,7 +496,6 @@ async function validateClockLocation() {
       distanceMeters: Math.round(distanceMeters),
       capturedAt: new Date().toISOString(),
     };
-
     if (distanceMeters > worksite.radiusMeters) {
       return {
         ok: false,
@@ -432,7 +503,6 @@ async function validateClockLocation() {
         location,
       };
     }
-
     return { ok: true, message: "定位通過", location };
   } catch (error) {
     return { ok: false, message: geolocationErrorMessage(error) };
@@ -459,30 +529,7 @@ function geolocationErrorMessage(error) {
   return "無法取得定位，請確認此網頁使用 HTTPS 開啟";
 }
 
-function hasWorksite() {
-  return (
-    Number.isFinite(worksite.latitude) &&
-    Number.isFinite(worksite.longitude) &&
-    Number.isFinite(worksite.radiusMeters) &&
-    worksite.radiusMeters >= 20
-  );
-}
-
-function distanceBetweenMeters(lat1, lng1, lat2, lng2) {
-  const earthRadiusMeters = 6371000;
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
-  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function toRadians(value) {
-  return (value * Math.PI) / 180;
-}
-
-function updateMonth(month) {
+async function updateMonth(month) {
   selectedMonth = month || selectedMonth;
   els.monthPicker.value = selectedMonth;
   const [year, monthIndex] = selectedMonth.split("-").map(Number);
@@ -491,6 +538,8 @@ function updateMonth(month) {
     year: "numeric",
     month: "long",
   });
+  if (currentProfile) await loadMonthData();
+  hydrateWorksite();
   render();
 }
 
@@ -510,9 +559,7 @@ function render() {
 }
 
 function getMonthRecords() {
-  return records
-    .filter((record) => record.date.startsWith(selectedMonth))
-    .sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`));
+  return [...records].sort(sortRecords);
 }
 
 function renderRecords(monthRecords) {
@@ -537,9 +584,13 @@ function renderRecords(monthRecords) {
   });
 
   els.recordsTable.querySelectorAll("[data-delete]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
+      const { error } = await supabaseClient.from("attendance_records").delete().eq("id", button.dataset.delete);
+      if (error) {
+        alert(`刪除失敗：${error.message}`);
+        return;
+      }
       records = records.filter((record) => record.id !== button.dataset.delete);
-      persistRecords();
       render();
     });
   });
@@ -551,7 +602,6 @@ function renderLatestLocationMap() {
     els.locationMapPanel.hidden = true;
     return;
   }
-
   renderLocationMap(latest.location, latest.label);
 }
 
@@ -571,7 +621,6 @@ function renderLocationMap(location, label) {
     els.locationMapPanel.hidden = true;
     return;
   }
-
   els.locationMapPanel.hidden = false;
   els.locationMapFrame.src = embeddedMapUrl(location);
   els.locationMapMeta.textContent = [
@@ -583,15 +632,6 @@ function renderLocationMap(location, label) {
     .filter(Boolean)
     .join("｜");
   els.locationMapLink.href = externalMapUrl(location);
-}
-
-function embeddedMapUrl(location) {
-  const query = encodeURIComponent(`${location.latitude},${location.longitude}`);
-  return `https://maps.google.com/maps?q=${query}&z=18&output=embed`;
-}
-
-function externalMapUrl(location) {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${location.latitude},${location.longitude}`)}`;
 }
 
 function renderLeave(monthRecords) {
@@ -618,7 +658,6 @@ function renderLeave(monthRecords) {
 function renderLeaveTable(leaveRecords) {
   els.leaveTable.innerHTML = "";
   els.emptyLeave.classList.toggle("is-visible", leaveRecords.length === 0);
-
   leaveRecords.forEach((record) => {
     const row = document.createElement("tr");
     row.innerHTML = `
@@ -630,87 +669,40 @@ function renderLeaveTable(leaveRecords) {
     `;
     els.leaveTable.append(row);
   });
-
   els.leaveTable.querySelectorAll("[data-delete]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
+      const { error } = await supabaseClient.from("attendance_records").delete().eq("id", button.dataset.delete);
+      if (error) {
+        alert(`刪除失敗：${error.message}`);
+        return;
+      }
       records = records.filter((record) => record.id !== button.dataset.delete);
-      persistRecords();
       render();
     });
   });
 }
 
-function calculateRecord(record) {
-  if (record.type !== "work" || !record.startTime || !record.endTime) {
-    return { hours: 0 };
-  }
-
-  const start = parseMinutes(record.startTime);
-  let end = parseMinutes(record.endTime);
-  if (end < start) end += 24 * 60;
-
-  const minutes = Math.max(end - start - (Number(record.breakMinutes) || 0), 0);
-  const hours = roundToQuarter(minutes / 60);
-  return { hours };
-}
-
-function parseMinutes(time) {
-  const [hour, minute] = time.split(":").map(Number);
-  return hour * 60 + minute;
-}
-
-function roundToQuarter(value) {
-  return Math.round(value * 4) / 4;
-}
-
-function exportCsv() {
-  const rows = [
-    ["日期", "類型", "上班", "下班", "工時", "上班定位距離", "下班定位距離", "請假天數", "備註"],
-    ...getMonthRecords().map((record) => {
-      const computed = calculateRecord(record);
-      return [
-        record.date,
-        leaveLabels[record.type] || record.type,
-        record.startTime,
-        record.endTime,
-        computed.hours,
-        formatLocationDistance(record.clockInLocation),
-        formatLocationDistance(record.clockOutLocation),
-        getLeaveDays(record),
-        record.note,
-      ];
-    }),
-  ];
-
-  downloadCsv(rows, `打卡紀錄-${selectedMonth}.csv`);
-}
-
 function renderHrDashboard() {
   if (!isHr()) return;
-
-  const employeeAccountsOnly = employeeAccounts.filter((account) => account.role === "employee");
-  const allRows = getAllEmployeeRecords().filter((item) => item.record.date.startsWith(selectedMonth));
-  const leaveRows = allRows.filter((item) => leaveTypes.includes(item.record.type));
-  const totalHours = allRows.reduce((sum, item) => sum + calculateRecord(item.record).hours, 0);
-
-  els.hrEmployeeCount.textContent = employeeAccountsOnly.length;
-  els.hrRecordCount.textContent = allRows.length;
+  const leaveRows = hrRows.filter((item) => leaveTypes.includes(item.record.type));
+  const totalHours = hrRows.reduce((sum, item) => sum + calculateRecord(item.record).hours, 0);
+  els.hrEmployeeCount.textContent = employeeProfiles.filter((profile) => profile.role === "employee").length;
+  els.hrRecordCount.textContent = hrRows.length;
   els.hrLeaveCount.textContent = formatLeaveNumber(leaveRows.reduce((sum, item) => sum + getLeaveDays(item.record), 0));
   els.hrHourCount.textContent = formatHours(totalHours);
-  renderWorksiteStatus();
   renderAccountTable();
-  renderHrRecordsTable(allRows);
+  renderHrRecordsTable(hrRows);
 }
 
 function renderAccountTable() {
   els.accountTable.innerHTML = "";
-  employeeAccounts.forEach((account) => {
+  employeeProfiles.forEach((profile) => {
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${escapeHtml(account.id)}</td>
-      <td>${escapeHtml(account.name)}</td>
-      <td>${account.role === "hr" ? "HR" : "員工"}</td>
-      <td>${escapeHtml(account.password)}</td>
+      <td>${escapeHtml(profile.employee_id)}</td>
+      <td>${escapeHtml(profile.full_name)}</td>
+      <td>${profile.role === "hr" ? "HR" : "員工"}</td>
+      <td>${profile.is_active ? "啟用" : "停用"}</td>
     `;
     els.accountTable.append(row);
   });
@@ -719,60 +711,130 @@ function renderAccountTable() {
 function renderHrRecordsTable(rows) {
   els.hrRecordsTable.innerHTML = "";
   els.emptyHrRecords.classList.toggle("is-visible", rows.length === 0);
+  rows.sort((a, b) => `${a.record.date}${a.account.id}`.localeCompare(`${b.record.date}${b.account.id}`)).forEach(({ account, record }) => {
+    const computed = calculateRecord(record);
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${escapeHtml(account.id)}</td>
+      <td>${escapeHtml(account.name)}</td>
+      <td>${escapeHtml(record.date)}</td>
+      <td>${leaveLabels[record.type] || record.type}</td>
+      <td>${record.startTime || "-"}</td>
+      <td>${record.endTime || "-"}</td>
+      <td>${formatHours(computed.hours)}</td>
+      <td>${formatLocationSummary(record)}</td>
+      <td>${formatLeaveDays(getLeaveDays(record))}</td>
+      <td>${escapeHtml(record.note || "-")}</td>
+    `;
+    els.hrRecordsTable.append(row);
+  });
+}
 
-  rows
-    .sort((a, b) => `${a.record.date}${a.account.id}`.localeCompare(`${b.record.date}${b.account.id}`))
-    .forEach(({ account, record }) => {
-      const computed = calculateRecord(record);
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${escapeHtml(account.id)}</td>
-        <td>${escapeHtml(account.name)}</td>
-        <td>${escapeHtml(record.date)}</td>
-        <td>${leaveLabels[record.type] || record.type}</td>
-        <td>${record.startTime || "-"}</td>
-        <td>${record.endTime || "-"}</td>
-        <td>${formatHours(computed.hours)}</td>
-        <td>${formatLocationSummary(record)}</td>
-        <td>${formatLeaveDays(getLeaveDays(record))}</td>
-        <td>${escapeHtml(record.note || "-")}</td>
-      `;
-      els.hrRecordsTable.append(row);
-    });
+function exportCsv() {
+  const rows = [
+    ["日期", "類型", "上班", "下班", "工時", "上班定位距離", "下班定位距離", "請假天數", "備註"],
+    ...getMonthRecords().map((record) => csvRecord(record)),
+  ];
+  downloadCsv(rows, `打卡紀錄-${selectedMonth}.csv`);
 }
 
 function exportAllCsv() {
   if (!isHr()) return;
-
   const rows = [
     ["工號", "姓名", "日期", "類型", "上班", "下班", "工時", "上班定位距離", "下班定位距離", "請假天數", "備註"],
-    ...getAllEmployeeRecords()
-      .filter((item) => item.record.date.startsWith(selectedMonth))
-      .map(({ account, record }) => {
-        const computed = calculateRecord(record);
-        return [
-          account.id,
-          account.name,
-          record.date,
-          leaveLabels[record.type] || record.type,
-          record.startTime,
-          record.endTime,
-          computed.hours,
-          formatLocationDistance(record.clockInLocation),
-          formatLocationDistance(record.clockOutLocation),
-          getLeaveDays(record),
-          record.note,
-        ];
-      }),
+    ...hrRows.map(({ account, record }) => [account.id, account.name, ...csvRecord(record)]),
   ];
-
   downloadCsv(rows, `HR彙整紀錄-${selectedMonth}.csv`);
 }
 
-function getAllEmployeeRecords() {
-  return employeeAccounts
-    .filter((account) => account.role === "employee")
-    .flatMap((account) => loadRecordsForEmployee(account.id).map((record) => ({ account, record })));
+function csvRecord(record) {
+  const computed = calculateRecord(record);
+  return [
+    record.date,
+    leaveLabels[record.type] || record.type,
+    record.startTime,
+    record.endTime,
+    computed.hours,
+    formatLocationDistance(record.clockInLocation),
+    formatLocationDistance(record.clockOutLocation),
+    getLeaveDays(record),
+    record.note,
+  ];
+}
+
+function recordFromRow(row) {
+  return {
+    id: row.id,
+    date: row.record_date,
+    type: row.record_type,
+    startTime: formatTime(row.start_time),
+    endTime: formatTime(row.end_time),
+    breakMinutes: Number(row.break_minutes) || 0,
+    leaveDays: Number(row.leave_days) || 0,
+    leavePeriod: row.leave_period || "",
+    note: row.note || "",
+    clockInLocation: row.clock_in_lat == null ? null : {
+      latitude: Number(row.clock_in_lat),
+      longitude: Number(row.clock_in_lng),
+      accuracy: Number(row.clock_in_accuracy) || 0,
+      distanceMeters: Number(row.clock_in_distance) || 0,
+      capturedAt: row.clock_in_captured_at,
+    },
+    clockOutLocation: row.clock_out_lat == null ? null : {
+      latitude: Number(row.clock_out_lat),
+      longitude: Number(row.clock_out_lng),
+      accuracy: Number(row.clock_out_accuracy) || 0,
+      distanceMeters: Number(row.clock_out_distance) || 0,
+      capturedAt: row.clock_out_captured_at,
+    },
+  };
+}
+
+function worksiteFromRow(row) {
+  return {
+    latitude: Number(row.latitude),
+    longitude: Number(row.longitude),
+    radiusMeters: Number(row.radius_meters),
+  };
+}
+
+function locationPayload(direction, location) {
+  const prefix = direction === "in" ? "clock_in" : "clock_out";
+  return {
+    [`${prefix}_lat`]: location.latitude,
+    [`${prefix}_lng`]: location.longitude,
+    [`${prefix}_accuracy`]: location.accuracy,
+    [`${prefix}_distance`]: location.distanceMeters,
+    [`${prefix}_captured_at`]: location.capturedAt,
+  };
+}
+
+function hasWorksite() {
+  return (
+    Number.isFinite(worksite.latitude) &&
+    Number.isFinite(worksite.longitude) &&
+    Number.isFinite(worksite.radiusMeters) &&
+    worksite.radiusMeters >= 20
+  );
+}
+
+function distanceBetweenMeters(lat1, lng1, lat2, lng2) {
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLng / 2) ** 2;
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function calculateRecord(record) {
+  if (record.type !== "work" || !record.startTime || !record.endTime) return { hours: 0 };
+  const start = parseMinutes(record.startTime);
+  let end = parseMinutes(record.endTime);
+  if (end < start) end += 24 * 60;
+  const minutes = Math.max(end - start - (Number(record.breakMinutes) || 0), 0);
+  return { hours: roundToQuarter(minutes / 60) };
 }
 
 function downloadCsv(rows, filename) {
@@ -786,52 +848,23 @@ function downloadCsv(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
-function csvCell(value) {
-  const text = String(value ?? "");
-  return `"${text.replaceAll('"', '""')}"`;
-}
-
-function persistRecords() {
-  if (!currentEmployeeId) return;
-  localStorage.setItem(employeeRecordsKey(currentEmployeeId), JSON.stringify(records));
-}
-
-function loadRecords() {
-  if (!currentEmployeeId) return [];
-  return loadRecordsForEmployee(currentEmployeeId);
-}
-
-function loadRecordsForEmployee(employeeId) {
-  try {
-    return JSON.parse(localStorage.getItem(employeeRecordsKey(employeeId))) || [];
-  } catch {
-    return [];
-  }
-}
-
-function employeeRecordsKey(employeeId) {
-  return `${STORAGE_KEY}-${employeeId}`;
-}
-
-function loadWorksite() {
-  try {
-    return JSON.parse(localStorage.getItem(WORKSITE_KEY)) || {};
-  } catch {
-    return {};
-  }
-}
-
-function getAccount(employeeId) {
-  return employeeAccounts.find((account) => account.id === employeeId) || {
-    id: employeeId,
-    name: employeeId,
-    password: "",
-    role: "employee",
-  };
-}
-
 function isHr() {
-  return currentAccount?.role === "hr";
+  return currentProfile?.role === "hr";
+}
+
+function normalizeEmployeeId(value) {
+  return value.trim().toUpperCase();
+}
+
+function employeeIdToEmail(employeeId) {
+  return `${employeeId.toLowerCase()}@${AUTH_EMAIL_DOMAIN}`;
+}
+
+function monthBounds(month) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const start = new Date(year, monthNumber - 1, 1);
+  const end = new Date(year, monthNumber, 0);
+  return [`${monthKey(start)}-01`, `${monthKey(end)}-${padDate(end.getDate())}`];
 }
 
 function todayKey() {
@@ -853,12 +886,10 @@ function datesBetween(startDate, endDate) {
   const dates = [];
   const current = dateFromKey(startDate);
   const end = dateFromKey(endDate);
-
   while (current <= end) {
     dates.push(`${monthKey(current)}-${padDate(current.getDate())}`);
     current.setDate(current.getDate() + 1);
   }
-
   return dates;
 }
 
@@ -873,6 +904,23 @@ function monthKey(date) {
 
 function padDate(value) {
   return String(value).padStart(2, "0");
+}
+
+function sortRecords(a, b) {
+  return `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`);
+}
+
+function parseMinutes(time) {
+  const [hour, minute] = time.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function roundToQuarter(value) {
+  return Math.round(value * 4) / 4;
+}
+
+function formatTime(value) {
+  return value ? String(value).slice(0, 5) : "";
 }
 
 function formatDate(date) {
@@ -931,6 +979,24 @@ function formatLeaveDays(value) {
 
 function formatLeaveNumber(value) {
   return Number.isInteger(value) ? String(value) : String(value.toFixed(1));
+}
+
+function toRadians(value) {
+  return (value * Math.PI) / 180;
+}
+
+function embeddedMapUrl(location) {
+  const query = encodeURIComponent(`${location.latitude},${location.longitude}`);
+  return `https://maps.google.com/maps?q=${query}&z=18&output=embed`;
+}
+
+function externalMapUrl(location) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${location.latitude},${location.longitude}`)}`;
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return `"${text.replaceAll('"', '""')}"`;
 }
 
 function escapeHtml(value) {

@@ -9,10 +9,10 @@
     <meta name="apple-mobile-web-app-title" content="洪小花打卡系統" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>洪小花打卡系統</title>
-    <link rel="manifest" href="manifest.webmanifest?v=11" />
+    <link rel="manifest" href="manifest.webmanifest?v=12" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=12" />
   </head>
   <body>
     <section class="login-screen" aria-label="登入">
@@ -29,7 +29,7 @@
         </label>
         <p class="login-error" id="loginError" aria-live="polite"></p>
         <button class="primary-button form-submit" type="submit">登入</button>
-        <p class="login-hint">員工：A001 / 1234　HR：HR0001 / hr1234</p>
+        <p class="login-hint">請使用 HR 建立的工號與密碼登入</p>
       </form>
     </section>
 
@@ -226,8 +226,8 @@
           </div>
 
           <div class="notice-panel">
-            <strong>目前是純前端 PWA</strong>
-            <p>HR 後台只能讀取「同一台裝置、同一個瀏覽器」裡的資料。若員工各自在手機上打卡，HR 要集中取得紀錄，需要接資料庫後端，例如 Firebase、Supabase 或公司伺服器 API。</p>
+            <strong>正式版資料庫模式</strong>
+            <p>打卡、請假、員工與打卡範圍會同步到 Supabase 後端。若此頁顯示尚未設定後端，請先完成 `config.js` 與 Supabase schema 設定。</p>
           </div>
 
           <section class="worksite-panel">
@@ -287,7 +287,7 @@
                     <th>工號</th>
                     <th>姓名</th>
                     <th>角色</th>
-                    <th>密碼</th>
+                    <th>狀態</th>
                   </tr>
                 </thead>
                 <tbody id="accountTable"></tbody>
@@ -324,6 +324,8 @@
       </main>
     </div>
 
-    <script src="app.js?v=11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js?v=12"></script>
+    <script src="app.js?v=12"></script>
   </body>
 </html>
