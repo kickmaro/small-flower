@@ -220,7 +220,8 @@ body:not(.is-hr) .hr-only {
   display: none;
 }
 
-.leave-panel label {
+.leave-panel label,
+.admin-form label {
   display: grid;
   gap: 7px;
   color: var(--muted);
@@ -458,6 +459,22 @@ select {
 .form-submit {
   width: 100%;
   margin-top: 18px;
+}
+
+.admin-form {
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #fbfdfc;
+}
+
+.form-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
 }
 
 .wide-field {

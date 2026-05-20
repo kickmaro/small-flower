@@ -35,12 +35,27 @@ HR 登入後可在 HR 後台設定：
 
 員工打卡時必須授權定位，且距離需在半徑內。
 
-## 4. 正式新增員工建議
+## 4. 系統內 HR 後台
 
-目前正式版骨架可透過 Supabase Dashboard 建立帳號。若要讓 HR 從系統畫面新增員工，請新增 Supabase Edge Function：
+HR 登入後，系統內的 `HR` 頁籤就是正式後台。功能包含：
 
-```text
-HR 前端 -> Edge Function -> service role 建立 Auth user -> 寫入 profiles
+- 員工帳號設定
+- 打卡範圍設定
+- 全員打卡/請假紀錄查詢
+- CSV 匯出
+
+員工帳號設定會呼叫 `admin-upsert-employee` Edge Function。
+
+## 5. 部署員工管理 Edge Function
+
+安裝並登入 Supabase CLI 後，在專案目錄執行：
+
+```bash
+supabase link --project-ref your-project-ref
+supabase secrets set AUTH_EMAIL_DOMAIN=hong-xiao-hua.local
+supabase functions deploy admin-upsert-employee
 ```
 
 service role key 只能存在 Edge Function 環境變數，不能放進 `config.js` 或任何前端檔案。
+
+部署後，HR 可在系統的 HR 後台輸入工號、姓名、角色、初始密碼來建立員工。若點選員工列表中的既有員工，表單會帶入資料，可更新角色、啟用狀態或輸入新密碼重設密碼。

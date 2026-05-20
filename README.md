@@ -18,7 +18,7 @@
 - 定位打卡範圍限制
 - 打卡成功後直接顯示 Google 地圖打卡位置
 - 請假申請與假別統計
-- HR 後台查詢全員紀錄、匯出 CSV
+- HR 後台建立/更新員工帳號、查詢全員紀錄、匯出 CSV
 - HR 設定公司打卡中心點與允許半徑
 
 ## 本機開啟
@@ -37,20 +37,26 @@ http://127.0.0.1:4173/index.html
 
 1. 建立 Supabase 專案。
 2. 到 SQL Editor 執行 `supabase/schema.sql`。
-3. 到 Authentication 建立使用者。
+3. 部署 HR 員工帳號管理 Edge Function：
+
+```bash
+supabase functions deploy admin-upsert-employee
+```
+
+4. 先到 Authentication 建立第一個 HR 使用者。
    - 工號 `A001` 對應 email：`a001@hong-xiao-hua.local`
    - HR `HR0001` 對應 email：`hr0001@hong-xiao-hua.local`
-4. 到 Table Editor 的 `profiles` 建立對應資料：
+5. 到 Table Editor 的 `profiles` 建立第一個 HR 對應資料：
 
 ```text
 id = auth.users 的 user id
-employee_id = A001
-full_name = 洪小花
-role = employee 或 hr
+employee_id = HR0001
+full_name = HR 管理員
+role = hr
 is_active = true
 ```
 
-5. 到 Supabase Project Settings > API 複製 Project URL 與 anon/publishable key，填入 `config.js`：
+6. 到 Supabase Project Settings > API 複製 Project URL 與 anon/publishable key，填入 `config.js`：
 
 ```js
 window.HH_CLOCK_CONFIG = {
@@ -62,8 +68,19 @@ window.HH_CLOCK_CONFIG = {
 
 `supabaseAnonKey` 可以放在前端，但必須搭配 `supabase/schema.sql` 的 RLS 規則。不要把 service role key 放進前端。
 
+## HR 後台
+
+HR 登入後會看到「HR」頁籤，裡面包含：
+
+- 員工帳號設定：新增員工、更新姓名、角色、啟用狀態、重設密碼
+- 打卡範圍設定：設定中心點與允許半徑
+- 本機彙整紀錄：查詢全員本月打卡與請假
+- 匯出全部 CSV
+
+員工帳號設定會呼叫 `supabase/functions/admin-upsert-employee`。此功能需要 Supabase Edge Function 的 service role 環境變數；不要把 service role key 放在前端。
+
 ## 商用注意
 
 - 打卡定位屬於員工個資，正式使用前應提供隱私告知、用途、保存期限與查閱權限說明。
 - Google 地圖嵌入會把打卡座標傳給 Google Maps 以載入地圖。
-- 若要讓 HR 在系統內直接新增/停用員工帳號，建議再加 Supabase Edge Function，由後端使用 service role 建立 Auth 使用者，前端不可保存 service role key。
+- HR 員工帳號管理透過 Supabase Edge Function 使用 service role 建立 Auth 使用者，前端不可保存 service role key。

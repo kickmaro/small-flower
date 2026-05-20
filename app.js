@@ -67,6 +67,13 @@ const els = {
   leaveTable: document.querySelector("#leaveTable"),
   emptyLeave: document.querySelector("#emptyLeave"),
   exportAllCsvBtn: document.querySelector("#exportAllCsvBtn"),
+  employeeAdminForm: document.querySelector("#employeeAdminForm"),
+  adminEmployeeId: document.querySelector("#adminEmployeeId"),
+  adminFullName: document.querySelector("#adminFullName"),
+  adminRole: document.querySelector("#adminRole"),
+  adminPassword: document.querySelector("#adminPassword"),
+  adminIsActive: document.querySelector("#adminIsActive"),
+  employeeAdminStatus: document.querySelector("#employeeAdminStatus"),
   accountTable: document.querySelector("#accountTable"),
   hrRecordsTable: document.querySelector("#hrRecordsTable"),
   emptyHrRecords: document.querySelector("#emptyHrRecords"),
@@ -130,6 +137,7 @@ function bindEvents() {
   els.leaveForm.addEventListener("submit", saveLeaveRequest);
   els.exportCsvBtn.addEventListener("click", exportCsv);
   els.exportAllCsvBtn.addEventListener("click", exportAllCsv);
+  els.employeeAdminForm.addEventListener("submit", saveEmployeeAccount);
   els.printBtn.addEventListener("click", () => window.print());
   els.worksiteForm.addEventListener("submit", saveWorksiteSettings);
   els.saveWorksiteBtn.addEventListener("click", saveWorksiteSettings);
@@ -139,7 +147,7 @@ function bindEvents() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw-v12.js").catch(() => {});
+    navigator.serviceWorker.register("./sw-v13.js").catch(() => {});
   });
 }
 
@@ -704,8 +712,53 @@ function renderAccountTable() {
       <td>${profile.role === "hr" ? "HR" : "員工"}</td>
       <td>${profile.is_active ? "啟用" : "停用"}</td>
     `;
+    row.addEventListener("click", () => fillEmployeeAdminForm(profile));
     els.accountTable.append(row);
   });
+}
+
+function fillEmployeeAdminForm(profile) {
+  els.adminEmployeeId.value = profile.employee_id;
+  els.adminFullName.value = profile.full_name;
+  els.adminRole.value = profile.role;
+  els.adminIsActive.value = String(Boolean(profile.is_active));
+  els.adminPassword.value = "";
+  els.employeeAdminStatus.textContent = `${profile.employee_id} 已帶入表單，可更新姓名、角色、狀態或重設密碼。`;
+}
+
+async function saveEmployeeAccount(event) {
+  event.preventDefault();
+  if (!isHr()) return;
+
+  const employeeId = normalizeEmployeeId(els.adminEmployeeId.value);
+  const payload = {
+    employeeId,
+    fullName: els.adminFullName.value.trim(),
+    role: els.adminRole.value,
+    password: els.adminPassword.value.trim(),
+    isActive: els.adminIsActive.value === "true",
+  };
+
+  if (!payload.employeeId || !payload.fullName) {
+    els.employeeAdminStatus.textContent = "請輸入工號與姓名";
+    return;
+  }
+
+  if (!employeeProfiles.some((profile) => profile.employee_id === employeeId) && payload.password.length < 8) {
+    els.employeeAdminStatus.textContent = "新增員工需要至少 8 碼初始密碼";
+    return;
+  }
+
+  els.employeeAdminStatus.textContent = "儲存中...";
+  const { error } = await supabaseClient.functions.invoke("admin-upsert-employee", { body: payload });
+  if (error) {
+    els.employeeAdminStatus.textContent = `儲存失敗：${error.message}`;
+    return;
+  }
+
+  els.employeeAdminStatus.textContent = `${employeeId} 已儲存`;
+  els.employeeAdminForm.reset();
+  await updateMonth(selectedMonth);
 }
 
 function renderHrRecordsTable(rows) {

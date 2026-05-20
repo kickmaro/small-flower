@@ -9,10 +9,10 @@
     <meta name="apple-mobile-web-app-title" content="洪小花打卡系統" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>洪小花打卡系統</title>
-    <link rel="manifest" href="manifest.webmanifest?v=12" />
+    <link rel="manifest" href="manifest.webmanifest?v=13" />
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=12" />
+    <link rel="stylesheet" href="styles.css?v=13" />
   </head>
   <body>
     <section class="login-screen" aria-label="登入">
@@ -280,6 +280,38 @@
             <div class="section-header compact">
               <h2>員工帳號設定</h2>
             </div>
+            <form class="admin-form" id="employeeAdminForm">
+              <div class="form-grid">
+                <label>
+                  工號
+                  <input id="adminEmployeeId" type="text" maxlength="24" placeholder="例：A001" required />
+                </label>
+                <label>
+                  姓名
+                  <input id="adminFullName" type="text" maxlength="40" placeholder="例：洪小花" required />
+                </label>
+                <label>
+                  角色
+                  <select id="adminRole">
+                    <option value="employee">員工</option>
+                    <option value="hr">HR</option>
+                  </select>
+                </label>
+                <label>
+                  初始/新密碼
+                  <input id="adminPassword" type="password" minlength="8" autocomplete="new-password" placeholder="至少 8 碼" />
+                </label>
+                <label>
+                  狀態
+                  <select id="adminIsActive">
+                    <option value="true">啟用</option>
+                    <option value="false">停用</option>
+                  </select>
+                </label>
+              </div>
+              <p class="form-note" id="employeeAdminStatus">新增員工時必須輸入初始密碼；更新既有員工時可留空。</p>
+              <button class="primary-button form-submit" type="submit">儲存員工帳號</button>
+            </form>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -325,7 +357,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=12"></script>
-    <script src="app.js?v=12"></script>
+    <script src="config.js?v=13"></script>
+    <script src="app.js?v=13"></script>
   </body>
 </html>
